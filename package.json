@@ -1,0 +1,14 @@
+{
+  "name": "auberge-des-sommets",
+  "version": "1.0.0",
+  "description": "L'Auberge des Sommets — jeu de gestion d'auberge de montagne, jouable dans le navigateur.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node --test tests/unit/",
+    "test:e2e": "node tests/e2e/smoke.mjs",
+    "sim": "node tools/simulate.mjs"
+  },
+  "license": "MIT"
+}
