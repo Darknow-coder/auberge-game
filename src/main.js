@@ -153,7 +153,7 @@ function updateTips(dt) {
   if (tipT < 1) return;
   tipT = 0;
   const el = $('#hint');
-  if (game.ui.mode !== 'none') { el.classList.add('hidden'); return; }
+  if (game.ui.mode !== 'none' || (isNarrow() && (panels.isOpen() || inspector.sel))) { el.classList.add('hidden'); return; }
   if (!el.classList.contains('hidden')) return;
   st.flags.tips ||= [];
   const tip = TIPS.find((t) => !st.flags.tips.includes(t.id) && t.when(st));

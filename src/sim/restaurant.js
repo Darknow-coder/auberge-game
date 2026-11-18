@@ -2,7 +2,7 @@
 import { RECIPES, DRINKS, BREAKFAST } from '../data/economy.js';
 import { clock } from './time.js';
 import { getRng, notify } from './state.js';
-import { staffOnDuty } from './staff.js';
+import { staffOnDuty, shiftEnd } from './staff.js';
 import { abortMeal } from './guests.js';
 
 export function recipeUnlocked(state, id) {
@@ -36,7 +36,9 @@ export function restaurantStatus(state) {
   if (!rt.diningSeats.length) return { open: false, reason: 'seats' };
   const k = kitchenStatus(state);
   if (!k.ok) return { open: false, reason: k.reason };
-  if (!staffOnDuty(state, 'cook').length) return { open: false, reason: 'cook' };
+  const hf = clock(state.time).hf;
+  const cooks = staffOnDuty(state, 'cook').filter((c) => shiftEnd(c) - hf > 0.5);
+  if (!cooks.length) return { open: false, reason: 'cook' };
   if (state.stock.ingredients < 1) return { open: false, reason: 'stock' };
   if (!state.menu.recipes.some((id) => recipeUnlocked(state, id))) return { open: false, reason: 'menu' };
   return { open: true };
@@ -144,7 +146,7 @@ export function mealQuality(state, order, cook) {
   const k = kitchenStatus(state);
   const kq = k.ok ? Math.min(3.2, k.stats.kitchen) : 0.5;
   const skill = cook ? cook.skill : 0.3;
-  let q = base * (0.55 + 0.45 * skill) * (0.82 + 0.08 * kq);
+  let q = base * (0.7 + 0.4 * skill) * (0.9 + 0.06 * kq);
   if (cook && cook.traits.includes('meticuleux')) q *= 1.06;
   return Math.round(q * 100) / 100;
 }

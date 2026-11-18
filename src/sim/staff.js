@@ -1,5 +1,5 @@
 // Personnel : génération, recrutement, horaires et IA par rôle.
-import { STAFF_ROLES, STAFF_TRAITS, SHIFTS } from '../data/economy.js';
+import { STAFF_ROLES, STAFF_TRAITS, SHIFTS, RECIPES } from '../data/economy.js';
 import { FIRST_NAMES_F, FIRST_NAMES_M, LAST_NAMES, SKIN_TONES, HAIR_COLORS } from '../data/guests.js';
 import { SPOTS } from '../data/constants.js';
 import { FURNITURE } from '../data/furniture.js';
@@ -77,6 +77,22 @@ export function fireStaff(state, s, quit = false) {
   return { ok: true };
 }
 
+export function shiftEnd(s) {
+  if (s.role === 'owner') return 23;
+  return (SHIFTS[s.shift] || SHIFTS.journee).to;
+}
+
+/** Heures supplémentaires : on finit le service en cours avant de partir (2 h max). */
+function overtime(state, s, hf) {
+  const end = shiftEnd(s);
+  if (hf < end || hf > end + 2) return false;
+  const orders = state.restaurant.orders;
+  if (s.role === 'cook') return orders.some((o) => o.kind === 'meal' && (o.status === 'new' || o.status === 'cooking' || (o.status === 'ready' && !staffOnDuty(state, 'waiter').length) || (o.status === 'delivering' && o.waiterId === s.id)));
+  if (s.role === 'waiter') return orders.some((o) => (o.kind === 'meal' && (o.status === 'ready' || o.waiterId === s.id)) || (o.kind === 'drink' && o.status !== 'done'));
+  if (s.role === 'receptionist') return state.reception.queue.length > 0 && !!(s.task && s.task.kind === 'desk');
+  return false;
+}
+
 export function isOnDuty(s, hf) {
   if (s.role === 'owner') return hf >= 6.5 && hf < 23;
   const sh = SHIFTS[s.shift] || SHIFTS.journee;
@@ -85,7 +101,7 @@ export function isOnDuty(s, hf) {
 
 export function staffOnDuty(state, role) {
   const hf = clock(state.time).hf;
-  return state.staff.filter((s) => s.role === role && s.present && isOnDuty(s, hf));
+  return state.staff.filter((s) => s.role === role && s.present && (isOnDuty(s, hf) || (hf >= shiftEnd(s) && hf < shiftEnd(s) + 2 && s.task && s.task.kind !== 'leave')));
 }
 
 export function deskAgent(state) {
@@ -308,8 +324,8 @@ function updateCook(state, s, dt) {
     o.cookId = s.id;
     task.orderId = o.id;
     task.t = 0;
-    const base = o.breakfast ? 8 : 10 + (o.recipe ? 4 : 0);
-    task.need = (base * (0.75 + 0.25 * Math.sqrt(o.qty))) / s.eff;
+    const base = o.breakfast ? 5 : 7 + 2 * (RECIPES[o.recipe]?.ing || 1);
+    task.need = (base * (0.8 + 0.2 * Math.sqrt(o.qty))) / s.eff;
   } else {
     const o = orders.find((x) => x.id === task.orderId);
     if (!o) { task.orderId = 0; return; }
@@ -474,7 +490,7 @@ export function updateStaff(state, s, dt) {
   const hf = clock(state.time).hf;
   s.eff = s.role === 'owner' ? 0.55 : efficiency(state, s);
   if (s.idle > 0) { s.idle -= dt; return; }
-  const duty = isOnDuty(s, hf);
+  const duty = isOnDuty(s, hf) || (s.present && overtime(state, s, hf));
   if (!duty) {
     if (!s.present) return;
     if (s.role === 'owner') { dropTask(state, s); s.present = false; s.hidden = true; return; }

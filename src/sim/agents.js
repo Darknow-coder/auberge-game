@@ -49,7 +49,7 @@ export function stepAlong(state, a, dt, speedMul = 1) {
       if (!goal || !goTo(state, a, goal)) { a.path = null; return 'stuck'; }
     }
   }
-  let dist = WALK_SPEED * speedMul * dt;
+  let dist = WALK_SPEED * speedMul * (a.kind === 'staff' ? 1.45 : 1) * dt;
   while (dist > 0 && a.pi < a.path.length) {
     const [tx, ty] = a.path[a.pi];
     const cx = tx + 0.5, cy = ty + 0.5;

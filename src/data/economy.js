@@ -1,10 +1,10 @@
 // Rôles du personnel, recettes, boissons, stocks et services.
 
 export const STAFF_ROLES = {
-  receptionist: { name: 'Réceptionniste', fem: 'Réceptionniste', tier: 1, salary: [34, 70], top: '#2f5b7a', desc: 'Enregistre les arrivées et les départs. Plus il est compétent, plus la file avance vite.' },
-  cleaner: { name: "Agent d'entretien", fem: "Agente d'entretien", tier: 1, salary: [30, 56], top: '#5f8f6e', desc: 'Nettoie les chambres et les espaces communs. Utilise du linge.' },
-  cook: { name: 'Cuisinier', fem: 'Cuisinière', tier: 1, salary: [44, 96], top: '#f1ece2', desc: 'Prépare les plats. La compétence améliore la qualité et la vitesse.' },
-  waiter: { name: 'Serveur', fem: 'Serveuse', tier: 1, salary: [32, 62], top: '#7a2f36', desc: 'Apporte les plats en salle et tient le bar.' },
+  receptionist: { name: 'Réceptionniste', fem: 'Réceptionniste', tier: 1, salary: [28, 58], top: '#2f5b7a', desc: 'Enregistre les arrivées et les départs. Plus il est compétent, plus la file avance vite.' },
+  cleaner: { name: "Agent d'entretien", fem: "Agente d'entretien", tier: 1, salary: [24, 46], top: '#5f8f6e', desc: 'Nettoie les chambres et les espaces communs. Utilise du linge.' },
+  cook: { name: 'Cuisinier', fem: 'Cuisinière', tier: 1, salary: [38, 80], top: '#f1ece2', desc: 'Prépare les plats. La compétence améliore la qualité et la vitesse.' },
+  waiter: { name: 'Serveur', fem: 'Serveuse', tier: 1, salary: [26, 50], top: '#7a2f36', desc: 'Apporte les plats en salle et tient le bar.' },
   guide: { name: 'Guide de montagne', fem: 'Guide de montagne', tier: 3, salary: [60, 110], top: '#c46a2f', desc: 'Emmène les clients en excursion (payante).' },
   manager: { name: 'Gérant', fem: 'Gérante', tier: 3, salary: [95, 165], top: '#2b2f3a', desc: 'Motive l\'équipe (+12 % d\'efficacité) et réapprovisionne automatiquement les stocks.' },
 };
@@ -19,9 +19,9 @@ export const STAFF_TRAITS = {
 
 /** Shifts : heures de début et de fin (fin exclusive). */
 export const SHIFTS = {
-  matin: { name: 'Matin', from: 6, to: 15 },
-  journee: { name: 'Journée', from: 8, to: 20 },
-  soir: { name: 'Soir', from: 13, to: 24 },
+  matin: { name: 'Matin', from: 6, to: 14 },
+  journee: { name: 'Journée', from: 7, to: 21 },
+  soir: { name: 'Soir', from: 14, to: 23 },
 };
 
 // season: bonus d'attrait selon la saison [printemps, été, automne, hiver]

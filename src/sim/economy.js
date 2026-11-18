@@ -58,7 +58,7 @@ export function demandForecast(state) {
   const weather = WEATHER[state.weather.today] || WEATHER.soleil;
   const rep = state.reputation.value;
   const bedrooms = state.rt.agg.bedrooms;
-  const base = 1.1 + 0.42 * bedrooms + TIERS[state.tier].baseDemand * 0.5;
+  const base = 1.3 + 0.45 * bedrooms + TIERS[state.tier].baseDemand * 0.5;
   const repF = 0.45 + rep / 85;
   const pi = priceIndex(state);
   const priceF = clamp(1.25 - (pi - 1) * 0.75, 0.45, 1.6);
@@ -93,7 +93,7 @@ export function maintenanceCost(state) {
   let tiles = 0;
   for (const r of Object.values(state.world.rooms)) tiles += r.tiles.length * (ROOM_TYPES[r.type].indoor ? 1 : 0.4);
   const furn = Object.values(state.world.furniture).reduce((s, f) => s + FURNITURE[f.type].cost, 0);
-  return Math.round(tiles * 0.45 + furn * 0.002);
+  return Math.round(tiles * 0.35 + furn * 0.002);
 }
 
 /** Factures (chauffage, électricité, eau) prélevées chaque jour, plus élevées en hiver. */

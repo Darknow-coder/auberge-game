@@ -265,7 +265,7 @@ function checkIn(state, g, staff) {
   // Chambre
   const wants = ARCHETYPES[g.type].wants;
   if (st.standing < wants) think(g, 'La chambre est plus modeste que ce que j\'espérais.', -6);
-  const q = st.points / 70;
+  const q = st.points / 55;
   const exig = g.exigence * (g.traits.includes('esthete') ? 1.1 : 1);
   const dq = (q - exig) * 16;
   if (dq > 3) think(g, st.standing === 2 ? 'Une suite somptueuse !' : 'La chambre est très agréable.', Math.min(12, dq));
@@ -667,7 +667,13 @@ export function decide(state, g) {
   const pick = rng.weighted(top.map((o) => [o, o.score * o.score]));
   let ok = false;
   switch (pick.kind) {
-    case 'dine': ok = startDine(state, g, pick.terrace) || startDine(state, g, false); break;
+    case 'dine':
+      ok = startDine(state, g, pick.terrace) || startDine(state, g, false);
+      if (!ok && g.needs.hunger < 40) {
+        if (once(g, 'fullresto' + c.day)) think(g, 'Le restaurant était complet, il a fallu descendre au village.', -3);
+        ok = startAway(state, g, 'outing', rng.int(80, 120));
+      }
+      break;
     case 'outing': ok = startAway(state, g, 'outing', rng.int(80, 120)); break;
     case 'bar': ok = startBar(state, g); break;
     case 'hike': ok = startAway(state, g, 'hike', rng.int(140, 280) * (g.type === 'adventurer' ? 1.3 : 1)); g.flags['hike' + c.day] = true; break;
@@ -932,7 +938,7 @@ function tickMeal(state, g, dt) {
   const a = g.act;
   if (a.phase === 'wait') {
     a.wait += dt;
-    const limit = (a.kind === 'dine' ? 80 : 40) * ARCHETYPES[g.type].patience * 1.2;
+    const limit = (a.kind === 'dine' ? 115 : 50) * ARCHETYPES[g.type].patience * 1.2;
     if (a.wait > limit) {
       think(g, a.kind === 'dine' ? 'Nous avons attendu notre repas une éternité !' : 'Personne ne sert au bar…', -12);
       releaseAct(state, g);
@@ -971,8 +977,8 @@ export function serveGuest(state, g, order) {
     g.spent += order.total + (order.drinksTotal || 0);
     state.stats.meals += order.qty;
     const food = g.traits.includes('gourmand') ? 1.5 : 1;
-    let d = (order.quality - g.exigence * 0.85) * 22 * food;
-    if (a.wait > 45) d -= (a.wait - 45) / 6;
+    let d = (order.quality - g.exigence * 0.7) * 22 * food;
+    if (a.wait > 75) d -= (a.wait - 75) / 8;
     if (order.priceRatio > 1.35) { think(g, `${order.name} : délicieux, mais hors de prix.`, -5); }
     if (a.terrace) think(g, 'Quel plaisir de manger en terrasse !', 4);
     if (d > 2) think(g, order.breakfast ? 'Un petit-déjeuner copieux et savoureux.' : `${order.name} : un régal !`, Math.min(12, d));

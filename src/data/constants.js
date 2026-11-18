@@ -15,7 +15,7 @@ export const NIGHT_BOOST = 4;
 /** Vitesse de marche en cases par minute de jeu. */
 export const WALK_SPEED = 0.26;
 
-export const START_MONEY = 2600;
+export const START_MONEY = 3000;
 export const START_HOUR = 9;
 
 export const TERRAIN = Object.freeze({
