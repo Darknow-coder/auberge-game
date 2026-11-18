@@ -1,0 +1,10 @@
+{
+  "name": "L'Auberge des Sommets",
+  "short_name": "Auberge",
+  "start_url": "./",
+  "display": "fullscreen",
+  "background_color": "#1d2b24",
+  "theme_color": "#2f4a3a",
+  "lang": "fr",
+  "icons": [{ "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

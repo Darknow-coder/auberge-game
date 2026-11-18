@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node tools/serve.mjs",
-    "test": "node --test tests/unit/",
+    "test": "node --test tests/unit/*.test.js",
     "test:e2e": "node tests/e2e/smoke.mjs",
     "sim": "node tools/simulate.mjs"
   },

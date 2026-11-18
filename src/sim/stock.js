@@ -40,6 +40,7 @@ export function processDeliveries(state) {
   const due = state.deliveries.filter((d) => d.day <= day);
   if (!due.length) return;
   state.deliveries = state.deliveries.filter((d) => d.day > day);
+  state.flags.lastDelivery = day;
   const parts = [];
   for (const d of due) {
     const add = Math.max(0, Math.min(d.qty, storageCap(state, d.type) - state.stock[d.type]));

@@ -157,7 +157,7 @@ export function closeDayAccounts(state) {
   const day = clock(state.time - 1).day;
   const today = state.ledger.today;
   const totals = ledgerTotals(today);
-  const entry = { day, inc: today.inc, exp: today.exp, ...totals, money: Math.round(state.money), rep: Math.round(state.reputation.value) };
+  const entry = { day, incBy: today.inc, expBy: today.exp, ...totals, money: Math.round(state.money), rep: Math.round(state.reputation.value) };
   state.ledger.history.push(entry);
   if (state.ledger.history.length > 56) state.ledger.history.shift();
   state.ledger.today = { inc: {}, exp: {} };
