@@ -17,16 +17,16 @@ function modeler(ctx, def, rot) {
   const tp = (lx, ly) => {
     switch (rot & 3) {
       case 0: return [lx, ly];
-      case 1: return [D - ly, lx];
+      case 1: return [ly, W - lx];
       case 2: return [W - lx, D - ly];
-      default: return [ly, W - lx];
+      default: return [D - ly, lx];
     }
   };
   const items = [];
   const push = (k, fn) => items.push({ k, fn, i: items.length });
   const m = {
     rot, tp,
-    frontVisible: (rot & 3) === 0 || (rot & 3) === 1,
+    frontVisible: (rot & 3) === 0 || (rot & 3) === 1, // faces +y et +x visibles
     box(lx, ly, lz, lw, ld, lh, col, o) {
       const [ax, ay] = tp(lx, ly), [bx, by] = tp(lx + lw, ly + ld);
       const x = Math.min(ax, bx), y = Math.min(ay, by), w = Math.abs(bx - ax), d = Math.abs(by - ay);

@@ -160,5 +160,5 @@ test('achat de terrain', () => {
   assert.match(actions.buildRoom(s, 'garden', 15, 29, 17, 31).reason, /non acheté/);
   assert.ok(actions.buyParcel(s, 1).ok);
   assert.ok(actions.buildRoom(s, 'garden', 15, 29, 17, 31).ok);
-  assert.match(actions.buyParcel(s, 2).reason, /palier 2/);
+  assert.match(actions.buyParcel(s, 3).reason, /palier 2/);
 });

@@ -34,10 +34,10 @@ export const TIER_REQ_LABELS = {
 /** Parcelles : rect [x0, y0, x1, y1] inclus. */
 export const PARCELS = [
   { id: 0, name: "Terrain de l'auberge", rect: [12, 13, 27, 27], cost: 0, tier: 1 },
-  { id: 1, name: 'Pré du verger', rect: [12, 28, 27, 32], cost: 1400, tier: 1, desc: 'Prairie ensoleillée au sud, idéale pour un jardin.' },
-  { id: 2, name: "Clairière de l'Est", rect: [28, 13, 31, 29], cost: 2800, tier: 2, desc: 'S\'étend jusqu\'aux rives du lac.' },
-  { id: 3, name: 'Lisière de la forêt', rect: [12, 7, 27, 12], cost: 4500, tier: 2, desc: 'Au pied de la forêt, au départ des sentiers.' },
-  { id: 4, name: 'Rive du lac', rect: [28, 30, 35, 34], cost: 8000, tier: 3, desc: 'Vue imprenable sur le lac.' },
+  { id: 1, name: 'Pré du verger', rect: [12, 28, 27, 33], cost: 1400, tier: 1, desc: 'Prairie ensoleillée au sud, idéale pour un jardin ou une aile de chambres.' },
+  { id: 2, name: 'Berge du lac', rect: [28, 13, 30, 26], cost: 2200, tier: 2, desc: 'Bande de rive face au lac : parfaite pour une terrasse avec vue.' },
+  { id: 3, name: 'Lisière de la forêt', rect: [12, 7, 27, 12], cost: 4500, tier: 2, desc: 'Au pied de la forêt et des sentiers (défrichage inclus à la construction).' },
+  { id: 4, name: 'Rive sud du lac', rect: [28, 27, 36, 34], cost: 8000, tier: 3, desc: 'Grand terrain au bord de l\'eau, rêvé pour un espace bien-être.' },
   { id: 5, name: 'Coteau du couchant', rect: [6, 13, 11, 30], cost: 11000, tier: 4, desc: 'Grand terrain à l\'ouest, coucher de soleil garanti.' },
 ];
 

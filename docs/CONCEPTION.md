@@ -73,3 +73,24 @@ Principes :
 | Économie déséquilibrée | Simulation sans affichage sur plusieurs jours dans les tests, constantes centralisées |
 | Sauvegardes corrompues/anciennes | Versionnage + migration + validation au chargement, export/import manuel |
 | Complexité d'interface sur téléphone | Barre d'outils basse, panneaux en feuille, confirmation tactile des constructions |
+
+## 6. Validation (état actuel)
+
+Vérifié par les tests automatisés (`npm test`, `npm run test:e2e`) et par des parties simulées :
+
+| Point | Méthode | Résultat |
+|---|---|---|
+| Construction, murs, portes, fusion, démolition | tests unitaires `world.test.js` | OK |
+| Placement de meubles (portes, passages, pièces autorisées) | tests unitaires | OK |
+| Pathfinding (accès réception, intimité des chambres) | tests unitaires | OK |
+| Restaurant : commande → cuisine → service → paiement | `simulation.test.js` | OK |
+| Bar, salle de jeux, boutique, excursions, spa | `facilities.test.js` | OK |
+| Économie, stocks, prêt, objectifs, paliers, terrains | tests unitaires | OK |
+| Sauvegarde : aller-retour et reprise | tests unitaires + e2e (rechargement de page) | OK |
+| Absence de blocage des clients | simulation 12 jours (test) + 3 × 60 jours avec joueur automatique et rechargements | 0 client bloqué |
+| Interface ordinateur (1366×820) et téléphone (390×844, tactile) | `tests/e2e/smoke.mjs` | OK, aucune erreur JS |
+| Performances | rendu logiciel sans GPU : ~13 ms/image (1280×800), ~5 ms (mobile) | fluide |
+
+Équilibrage (outil `npm run sim -- 40 7 --auto`) : un joueur automatique très simple reste rentable, atteint le palier 2 vers le jour 16-22 et dépasse 7 000 écus au jour 60. Un joueur humain qui décore ses chambres (standing « Confortable ») obtient de meilleurs avis et progresse plus vite.
+
+Limites connues : pas de file d'attente physique au bar (les clients attendent assis) ; les membres d'un groupe partagent besoins et satisfaction ; le son ne peut pas être vérifié automatiquement (les appels WebAudio s'exécutent sans erreur).

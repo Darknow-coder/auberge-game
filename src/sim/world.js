@@ -255,6 +255,7 @@ export function buildRoom(state, type, ax, ay, bx, by, { free = false } = {}) {
   const chk = checkRoomRect(state, type, ax, ay, bx, by);
   if (!chk.ok && !(free && chk.reason === 'Fonds insuffisants')) return chk;
   const def = ROOM_TYPES[type];
+  const wasReachable = new Set(Object.values(state.world.rooms).filter((r) => state.rt.roomStats[r.id]?.reachable).map((r) => r.id));
   for (const i of chk.tiles) if (state.world.terrain[i] === TERRAIN.FOREST) state.world.terrain[i] = TERRAIN.GRASS;
   let room;
   if (chk.merge.length) {
@@ -278,6 +279,13 @@ export function buildRoom(state, type, ax, ay, bx, by, { free = false } = {}) {
   if (def.indoor) ensureLinks(state, room);
   removeOrphanDoors(state);
   rebuildIndices(state);
+  // Une construction ne doit pas enclaver une pièce : on rouvre un accès si besoin.
+  if (!free) {
+    for (const r of Object.values(state.world.rooms)) {
+      if (!ROOM_TYPES[r.type].indoor || ROOM_TYPES[r.type].staffOnly) continue;
+      if ((r.id === room.id || wasReachable.has(r.id)) && !state.rt.roomStats[r.id].reachable && addAccessDoor(state, r)) rebuildIndices(state);
+    }
+  }
   return { ok: true, room, cost: free ? 0 : chk.cost, merged: chk.merge.length > 0 };
 }
 
@@ -317,6 +325,32 @@ export function autoDoor(state, room) {
   if (!state.world.doors.includes(key)) state.world.doors.push(key);
   state.rt.doors = new Set(state.world.doors);
   return key;
+}
+
+/** Ajoute une porte vers une case déjà accessible aux clients (extérieur ou pièce commune). */
+function addAccessDoor(state, room) {
+  const set = new Set(room.tiles);
+  const cands = [];
+  for (const i of room.tiles) {
+    if (!state.rt.walk[i]) continue;
+    const x = i % W, y = (i / W) | 0;
+    for (const [dx, dy] of DIRS4) {
+      const nx = x + dx, ny = y + dy;
+      if (!inb(nx, ny)) continue;
+      const n = idx(nx, ny);
+      if (set.has(n) || !state.rt.walk[n] || !state.rt.guestReach[n]) continue;
+      const nr = roomAtTile(state, nx, ny);
+      if (nr && isIndoorType(nr.type) && !ROOM_TYPES[nr.type].public) continue;
+      cands.push({ x, y, nx, ny, score: nr ? (nr.type === 'corridor' ? 0 : 1) : 2 });
+    }
+  }
+  if (!cands.length) return false;
+  cands.sort((a, b) => a.score - b.score || (a.x + a.y) - (b.x + b.y));
+  const best = cands.filter((c) => c.score === cands[0].score);
+  const c = best[Math.floor(best.length / 2)];
+  state.world.doors.push(edgeKey(c.x, c.y, c.nx, c.ny));
+  state.rt.doors = new Set(state.world.doors);
+  return true;
 }
 
 const LINKS = [['kitchen', 'restaurant'], ['kitchen', 'bar'], ['restaurant', 'bar']];
@@ -425,9 +459,9 @@ export function localCell(def, rot, lx, ly) {
   let wx, wy;
   switch (rot & 3) {
     case 0: wx = cx; wy = cy; break;
-    case 1: wx = def.h - cy; wy = cx; break;
+    case 1: wx = cy; wy = def.w - cx; break; // face avant vers +x
     case 2: wx = def.w - cx; wy = def.h - cy; break;
-    default: wx = cy; wy = def.w - cx; break;
+    default: wx = def.h - cy; wy = cx; break; // face avant vers -x
   }
   return [Math.floor(wx), Math.floor(wy)];
 }

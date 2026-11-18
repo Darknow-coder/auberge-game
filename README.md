@@ -50,7 +50,7 @@ npm run test:e2e  # test de bout en bout Playwright (ordinateur + téléphone)
 npm run sim -- 40 7 --auto   # simulation équilibrage : 40 jours, graine 7, joueur automatique
 ```
 
-Les tests unitaires couvrent la construction, les murs et portes, le pathfinding, le mobilier, l'économie, les stocks, la sauvegarde, les objectifs et les paliers. Ils lancent aussi une simulation de 12 jours qui vérifie qu'aucun client ne reste bloqué.
+Les tests unitaires couvrent la construction, les murs et portes, le pathfinding, le mobilier, l’économie, les stocks, la sauvegarde, les objectifs et les paliers, ainsi que le fonctionnement réel du restaurant, du bar, de la salle de jeux, de la boutique, des excursions et du spa. Une simulation de 12 jours vérifie aussi qu’aucun client ne reste bloqué.
 
 ## Architecture
 
