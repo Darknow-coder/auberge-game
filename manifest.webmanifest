@@ -1,10 +1,19 @@
 {
-  "name": "L'Auberge des Sommets",
-  "short_name": "Auberge",
+  "name": "Prisme — le puzzle de blocs lumineux",
+  "short_name": "Prisme",
+  "description": "Glissez les pièces, complétez lignes et colonnes, enchaînez les combos.",
   "start_url": "./",
-  "display": "fullscreen",
-  "background_color": "#1d2b24",
-  "theme_color": "#2f4a3a",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0a1f",
+  "theme_color": "#17123f",
   "lang": "fr",
-  "icons": [{ "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "categories": ["games", "puzzle"],
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }

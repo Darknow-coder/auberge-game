@@ -1,14 +1,15 @@
 {
-  "name": "auberge-des-sommets",
+  "name": "prisme",
   "version": "1.0.0",
-  "description": "L'Auberge des Sommets — jeu de gestion d'auberge de montagne, jouable dans le navigateur.",
+  "description": "Prisme — le puzzle de blocs lumineux, jouable dans le navigateur (ordinateur et téléphone).",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node tools/serve.mjs",
     "test": "node --test tests/unit/*.test.js",
     "test:e2e": "node tests/e2e/smoke.mjs",
-    "sim": "node tools/simulate.mjs"
+    "sim": "node tools/simulate.mjs",
+    "icons": "node tools/make-icons.mjs"
   },
   "license": "MIT"
 }

@@ -1,5 +1,6 @@
-// Test de bout en bout (Playwright) : chargement, nouvelle partie, construction, meubles,
-// panneaux, inspecteur, sauvegarde/rechargement, affichage mobile. Lance son propre serveur.
+// Test de bout en bout (Playwright) : initiation, glisser-déposer souris et tactile, clavier,
+// pouvoirs, impasse, fin de partie, reprise après rechargement, Aventure, défi du jour,
+// réglages, thèmes, mise en page mobile. Lance son propre serveur.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
+const { chromium, devices } = require('playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const port = 8765;
 const shots = path.join(root, 'tests/e2e/screenshots');
@@ -15,94 +16,212 @@ fs.mkdirSync(shots, { recursive: true });
 
 const server = spawn(process.execPath, [path.join(root, 'tools/serve.mjs'), String(port)], { stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 600));
+const URL = `http://localhost:${port}/index.html?nosw`;
 let failures = 0;
 const check = (cond, msg) => { console.log(`${cond ? '✔' : '✘'} ${msg}`); if (!cond) failures++; };
 
+/** Joue avec l'IA jusqu'à la fin (ou n coups), en abandonnant en cas d'impasse. */
+const botPlay = (page, n = 5000, giveUp = true) => page.evaluate(async ([n, giveUp]) => {
+  const { bestMove } = await import('/src/game/bot.js');
+  const g = window.__prisme.game;
+  for (let i = 0; i < n; i++) {
+    const s = g.s;
+    if (s.status === 'stuck') { if (giveUp) g.onGiveUp(); break; }
+    if (s.status !== 'play') break;
+    const m = bestMove(s);
+    if (!m) break;
+    g.doPlace(m.ti, m.x, m.y);
+  }
+}, [n, giveUp]);
+
+const state = (page) => page.evaluate(() => { const s = window.__prisme.game.s; return s && { score: s.score, moves: s.moves, status: s.status, mode: s.mode, level: s.level }; });
+
+async function fresh(page, profile = null) {
+  await page.goto(URL);
+  await page.evaluate((p) => { localStorage.clear(); if (p) localStorage.setItem('prisme.profile.v1', JSON.stringify(p)); }, profile);
+  await page.reload();
+  await page.waitForSelector('#btn-play');
+}
+
 try {
   const browser = await chromium.launch();
-  // ---------------- Ordinateur
-  const page = await browser.newPage({ viewport: { width: 1366, height: 820 } });
   const errors = [];
-  page.on('pageerror', (e) => errors.push(String(e)));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto(`http://localhost:${port}/index.html`);
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await page.waitForSelector('text=Nouvelle partie');
-  await page.click('text=Nouvelle partie');
-  await page.fill('.modal input[type=text]', 'Auberge du Test');
-  await page.click("text=Ouvrir l'auberge");
-  await page.waitForTimeout(500);
-  check(await page.isVisible('#hud'), 'le HUD est affiché');
-  check((await page.textContent('#hud-name')) === 'Auberge du Test', 'le nom de l\'auberge est repris');
-  await page.click('text=Compris', { timeout: 2000 }).catch(() => {});
-  const T = (x, y) => page.evaluate(([x, y]) => window.__game.renderer.worldToScreen(x + 0.5, y + 0.5), [x, y]);
-  const money0 = await page.evaluate(() => window.__game.state.money);
-  // Construire une chambre par glisser-déposer
-  await page.click('#toolbar button[data-panel=build]');
-  await page.click('.item[title^="Accueille"]');
-  const a = await T(20, 22), b = await T(22, 23);
-  await page.mouse.move(a[0], a[1]); await page.mouse.down(); await page.mouse.move(b[0], b[1], { steps: 6 }); await page.mouse.up();
-  const rooms = await page.evaluate(() => Object.values(window.__game.state.world.rooms).filter((r) => r.type === 'bedroom').length);
-  check(rooms === 4, 'une chambre a été construite à la souris');
-  // Meubler
-  await page.click('#panel-tabs >> text=Mobilier');
-  await page.click('.item[title^="Lit double"]');
-  const c = await T(21, 22);
-  await page.mouse.move(c[0], c[1]); await page.mouse.click(c[0], c[1]);
-  await page.keyboard.press('Escape');
-  const bedrooms = await page.evaluate(() => window.__game.state.rt.agg.bedrooms);
-  check(bedrooms === 4, 'la chambre meublée compte dans la capacité');
-  const money1 = await page.evaluate(() => window.__game.state.money);
-  check(money1 < money0, `la construction est payée (${money0} → ${money1})`);
-  // Tous les panneaux s'ouvrent et affichent du contenu
-  for (const p of ['guests', 'staff', 'manage', 'finance', 'goals', 'progress', 'build']) {
-    await page.click(`#toolbar button[data-panel=${p}]`);
-    const n = await page.evaluate(() => document.querySelector('#panel-body').children.length);
-    check(n > 0, `panneau « ${p} » rempli`);
-    const count = await page.locator('#panel-tabs .tab').count();
-    for (let i = 0; i < count; i++) await page.locator('#panel-tabs .tab').nth(i).click();
-  }
-  await page.click('#panel-close');
-  // Faire passer le temps
-  await page.evaluate(() => { window.__game.setSpeed(3); });
-  await page.waitForTimeout(7000);
-  const st = await page.evaluate(() => ({ served: window.__game.state.stats.served, time: window.__game.state.time }));
-  check(st.served >= 1, `des clients ont été accueillis (${st.served})`);
-  await page.screenshot({ path: path.join(shots, 'desktop.png') });
-  // Inspecteur sur un client visible
-  await page.evaluate(() => window.__game.setSpeed(0));
-  const gp = await page.evaluate(() => { const G = window.__game; const g = G.state.guests.find((x) => !x.hidden); if (!g) return null; G.renderer.centerOn(g.x, g.y); return G.renderer.worldToScreen(g.x, g.y, 0.55); });
-  if (gp) { await page.mouse.click(gp[0], gp[1]); await page.waitForTimeout(300); check(await page.isVisible('#inspector'), 'l\'inspecteur s\'ouvre sur un client'); }
-  // Sauvegarde puis rechargement
-  await page.evaluate(() => window.__game.save());
-  const savedTime = await page.evaluate(() => window.__game.state.time);
-  await page.reload();
-  await page.waitForSelector('text=Continuer la partie');
-  await page.click('text=Continuer la partie');
-  await page.waitForTimeout(300);
-  const after = await page.evaluate(() => ({ time: window.__game.state.time, bedrooms: window.__game.state.rt.agg.bedrooms, name: window.__game.state.innName }));
-  check(after.bedrooms === 4 && after.name === 'Auberge du Test' && after.time >= savedTime, 'la partie est restaurée après rechargement');
-  check(errors.length === 0, `aucune erreur JavaScript (${errors.slice(0, 3).join(' | ')})`);
-  await page.close();
+  const watch = (page, label) => {
+    page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(`${label}: ${m.text()}`); });
+  };
 
-  // ---------------- Téléphone
-  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
-  const perr = [];
-  phone.on('pageerror', (e) => perr.push(String(e)));
-  await phone.goto(`http://localhost:${port}/index.html`);
-  await phone.waitForSelector('text=Nouvelle partie');
-  await phone.tap('text=Nouvelle partie');
-  await phone.tap("text=Ouvrir l'auberge");
-  await phone.waitForTimeout(500);
-  const tb = await phone.evaluate(() => { const r = document.querySelector('#toolbar').getBoundingClientRect(); return { w: r.width, bottom: r.bottom }; });
-  check(tb.w <= 390 && tb.bottom <= 844, 'la barre d\'outils tient dans l\'écran du téléphone');
-  await phone.tap('#toolbar button[data-panel=build]');
-  await phone.tap('.item[title^="Accueille"]');
-  check(await phone.isVisible('#buildbar'), 'la barre de construction apparaît sur mobile');
-  check(!(await phone.isVisible('#panel')), 'le catalogue se replie pour laisser tracer la pièce');
-  await phone.screenshot({ path: path.join(shots, 'mobile.png') });
-  check(perr.length === 0, `aucune erreur JavaScript sur mobile (${perr.slice(0, 3).join(' | ')})`);
+  // ------------------------------------------------------------ Ordinateur
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'fr-FR' });
+  const page = await ctx.newPage();
+  watch(page, 'ordinateur');
+  await fresh(page);
+  check((await page.textContent('#btn-play')).includes('Jouer'), 'accueil en français');
+  await page.screenshot({ path: path.join(shots, 'accueil.png') });
+
+  // Initiation : la première pièce se glisse dans le trou et réussit une ligne prisme.
+  await page.click('#btn-play');
+  await page.waitForTimeout(400);
+  check(await page.evaluate(() => !!window.__prisme.view.hand), 'la main de l\'initiation est affichée');
+  const tuto = await page.evaluate(() => {
+    const v = window.__prisme.view, tp = v.trayPiece(0), [x, y] = v.cellXY(6, 7);
+    return { from: [tp.x + tp.cell, tp.y + tp.cell / 2], to: [x + v.board.cell, y + v.board.cell / 2] };
+  });
+  await page.mouse.move(...tuto.from);
+  await page.mouse.down();
+  await page.mouse.move(tuto.to[0], tuto.to[1], { steps: 10 });
+  const ghost = await page.evaluate(() => window.__prisme.view.drag && window.__prisme.view.drag.ghost);
+  check(ghost && ghost.x === 6 && ghost.y === 7 && ghost.lines.rows.length === 1, 'l\'aperçu montre la ligne qui va disparaître');
+  await page.mouse.up();
+  let st = await state(page);
+  check(st.moves === 1 && st.score > 700, `pose à la souris + ligne prisme + grille nette (${st.score} pts)`);
+  check(await page.evaluate(() => window.__prisme.profile.tutorialDone), 'initiation marquée comme faite');
+
+  // Clavier : 1 choisit la pièce, les flèches la déplacent, Entrée la pose.
+  const kbOk = await page.evaluate(() => { const s = window.__prisme.game.s; return s.tray[1] != null; });
+  await page.keyboard.press(kbOk ? '2' : '3');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  st = await state(page);
+  check(st.moves === 2, 'pose au clavier');
+
+  // Pause
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal.show .pause, .modal.show.pause, .modal-card.pause');
+  check(await page.isVisible('text=Reprendre'), 'menu pause');
+  await page.click('text=Reprendre');
+  await page.waitForTimeout(250);
+
+  // Reprise après rechargement
+  await botPlay(page, 6);
+  const before = await state(page);
+  await page.reload();
+  await page.waitForSelector('#btn-play');
+  check((await page.textContent('#btn-play')).includes('Continuer'), 'l\'accueil propose de continuer');
+  await page.click('#btn-play');
+  await page.waitForTimeout(300);
+  const after = await state(page);
+  check(after.score === before.score && after.moves === before.moves, 'la partie reprend à l\'identique après rechargement');
+
+  // Impasse et pouvoir « bombe » à la souris.
+  await page.evaluate(() => {
+    const g = window.__prisme.game, s = g.s;
+    const rows = ['1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1'];
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { s.board.c[y * 8 + x] = ch === '.' ? 0 : 1; s.board.g[y * 8 + x] = 0; }));
+    s.tray = [{ k: 'square2:0', col: 2, gem: -1 }, { k: 'square3:0', col: 3, gem: -1 }, { k: 'line5:0', col: 4, gem: -1 }];
+    s.status = 'stuck';
+    s.powers = { rotate: 0, bomb: 1, reroll: 0 };
+    g.start(s);
+  });
+  await page.waitForTimeout(300);
+  check(await page.isVisible('#stuck .btn'), 'le panneau « Plus de place » s\'affiche');
+  await page.click('[data-power=bomb]');
+  const cell = await page.evaluate(() => { const v = window.__prisme.view; const [x, y] = v.cellXY(3, 3); return [x + v.board.cell / 2, y + v.board.cell / 2]; });
+  await page.mouse.move(...cell);
+  await page.mouse.down();
+  await page.mouse.up();
+  st = await state(page);
+  check(st.status === 'play', 'la bombe sauve la partie');
+  await page.screenshot({ path: path.join(shots, 'bombe.png') });
+
+  // Fin de partie → bilan
+  await page.evaluate(() => { window.__prisme.game.s.powers = { rotate: 0, bomb: 0, reroll: 0 }; });
+  await botPlay(page);
+  await page.waitForSelector('text=Partie terminée', { timeout: 8000 });
+  check(await page.isVisible('text=Rejouer'), 'bilan de fin de partie');
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: path.join(shots, 'bilan.png') });
+  check(await page.evaluate(() => window.__prisme.profile.stats.games === 1 && window.__prisme.profile.best.classic > 0), 'record et statistiques enregistrés');
+  await page.click('text=Rejouer');
+  await page.waitForTimeout(300);
+  st = await state(page);
+  check(st.moves === 0 && st.status === 'play', 'nouvelle partie lancée');
+
+  // Aventure
+  await page.evaluate(() => window.__prisme.show('home'));
+  await page.click('#btn-adventure');
+  await page.waitForSelector('[data-level="1"]');
+  check(await page.isDisabled('[data-level="2"]'), 'niveau 2 verrouillé au départ');
+  await page.click('[data-level="1"]');
+  await page.waitForSelector('.intro');
+  check((await page.textContent('.intro')).includes('Compléter 2 lignes'), 'objectifs du niveau affichés');
+  await page.click('.intro .btn.primary');
+  await page.waitForTimeout(300);
+  st = await state(page);
+  check(st.mode === 'adventure' && st.level === 1, 'niveau 1 lancé');
+  await botPlay(page);
+  await page.waitForSelector('text=Niveau 1 réussi', { timeout: 8000 });
+  await page.waitForTimeout(1600);
+  check(await page.evaluate(() => document.querySelectorAll('.stars.big .star.on').length >= 1), 'étoiles attribuées');
+  await page.screenshot({ path: path.join(shots, 'niveau-reussi.png') });
+  await page.click('text=Niveau suivant');
+  await page.waitForSelector('.intro');
+  await page.click('.intro .btn.primary');
+  await page.waitForTimeout(200);
+  check((await state(page)).level === 2, 'niveau suivant');
+
+  // Défi du jour
+  await page.evaluate(() => window.__prisme.show('daily'));
+  await page.waitForSelector('#btn-daily-play');
+  await page.screenshot({ path: path.join(shots, 'defi.png') });
+  await page.click('#btn-daily-play');
+  await page.waitForTimeout(300);
+  st = await state(page);
+  check(st.mode === 'daily', 'défi du jour lancé');
+  check(!(await page.isVisible('#powers')), 'pas de pouvoirs pendant le défi');
+  await botPlay(page);
+  await page.waitForSelector('text=Défi terminé', { timeout: 8000 });
+  check(await page.evaluate(() => Object.keys(window.__prisme.profile.daily.days).length === 1 && window.__prisme.profile.daily.streak === 1), 'défi enregistré, série de 1 jour');
+  await page.click('text=Accueil');
+
+  // Réglages : langue anglaise, puis retour au français.
+  await page.evaluate(() => window.__prisme.show('settings'));
+  await page.click('text=English');
+  check(await page.isVisible('text=Settings'), 'interface en anglais');
+  await page.click('text=Français');
+  await page.click('[data-setting=symbols]');
+  check(await page.evaluate(() => window.__prisme.profile.settings.symbols === true), 'option symboles activée');
+
+  // Thèmes : un thème verrouillé ne se choisit pas, un thème débloqué oui.
+  await page.evaluate(() => { window.__prisme.profile.xp = 2000; window.__prisme.show('themes'); });
+  check(await page.isDisabled('[data-theme-id=or]'), 'thème « Or » verrouillé');
+  await page.click('[data-theme-id=ocean]');
+  check(await page.evaluate(() => window.__prisme.profile.theme === 'ocean'), 'thème Océan appliqué');
+  await page.evaluate(() => window.__prisme.show('trophies'));
+  check((await page.$$('.ach.on')).length > 3, 'trophées débloqués visibles');
+  await ctx.close();
+
+  // ------------------------------------------------------------ Téléphone (tactile)
+  const mctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'fr-FR' });
+  const mob = await mctx.newPage();
+  watch(mob, 'téléphone');
+  await fresh(mob, { tutorialDone: true });
+  await mob.tap('#btn-play');
+  await mob.waitForTimeout(400);
+  const lay = await mob.evaluate(() => {
+    const v = window.__prisme.view, b = v.board;
+    const powers = document.querySelector('#powers').getBoundingClientRect();
+    return { inside: b.x >= 0 && b.x + b.size <= innerWidth && b.y >= 0, powersInside: powers.bottom <= innerHeight, size: b.size, scroll: document.documentElement.scrollWidth <= innerWidth };
+  });
+  check(lay.inside && lay.powersInside && lay.scroll, `mise en page mobile (grille de ${Math.round(lay.size)} px, rien ne déborde)`);
+  const cdp = await mctx.newCDPSession(mob);
+  const d = await mob.evaluate(async () => {
+    const { bestMove } = await import('/src/game/bot.js');
+    const g = window.__prisme.game, v = g.view, m = bestMove(g.s), tp = v.trayPiece(m.ti), sh = tp.sh, [x, y] = v.cellXY(m.x, m.y);
+    return { from: [tp.x + tp.cell / 2, tp.y + tp.cell / 2], to: [x + (sh.w * v.board.cell) / 2, y + sh.h * v.board.cell + v.board.cell * 1.1] };
+  });
+  const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  await touch('touchStart', ...d.from);
+  for (let i = 1; i <= 10; i++) await touch('touchMove', d.from[0] + ((d.to[0] - d.from[0]) * i) / 10, d.from[1] + ((d.to[1] - d.from[1]) * i) / 10);
+  await mob.screenshot({ path: path.join(shots, 'mobile-glisser.png') });
+  await touch('touchEnd', 0, 0);
+  check((await state(mob)).moves === 1, 'pose au doigt (la pièce flotte au-dessus du doigt)');
+  await botPlay(mob, 12);
+  await mob.waitForTimeout(800);
+  await mob.screenshot({ path: path.join(shots, 'mobile-partie.png') });
+  await mctx.close();
+
+  check(errors.length === 0, `aucune erreur JavaScript${errors.length ? ' :\n  ' + errors.join('\n  ') : ''}`);
   await browser.close();
 } catch (e) {
   console.error(e);
@@ -110,5 +229,5 @@ try {
 } finally {
   server.kill();
 }
-console.log(failures ? `\n${failures} échec(s)` : '\nTous les contrôles de bout en bout sont passés.');
+console.log(failures ? `\n${failures} échec(s)` : '\nTous les tests de bout en bout passent.');
 process.exit(failures ? 1 : 0);

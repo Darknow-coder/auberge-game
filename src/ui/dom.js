@@ -1,86 +1,54 @@
 // Petits utilitaires DOM.
-import { formatMoney } from '../core/util.js';
 
-export function h(tag, props = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props || {})) {
-    if (v === undefined || v === null || v === false) continue;
-    if (k === 'class') el.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
-    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (k === 'html') el.innerHTML = v;
-    else if (k in el && typeof v !== 'string') el[k] = v;
-    else el.setAttribute(k, v === true ? '' : v);
+/** h('div.classe#id', { attributs, onclick }, enfants...) */
+export function h(tag, props, ...kids) {
+  const m = tag.match(/^([a-z0-9]+)?((?:[.#][\w-]+)*)$/i);
+  const el = document.createElement(m[1] || 'div');
+  for (const part of (m[2] || '').match(/[.#][\w-]+/g) || []) {
+    if (part[0] === '.') el.classList.add(part.slice(1));
+    else el.id = part.slice(1);
   }
-  append(el, children);
+  if (props instanceof Node || Array.isArray(props) || typeof props !== 'object') {
+    kids.unshift(props);
+    props = null;
+  }
+  if (props) {
+    for (const [k, v] of Object.entries(props)) {
+      if (v == null || v === false) continue;
+      if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (k === 'html') el.innerHTML = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k === 'dataset') Object.assign(el.dataset, v);
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null || kid === false) continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
   return el;
-}
-function append(el, children) {
-  for (const c of children.flat(Infinity)) {
-    if (c === null || c === undefined || c === false) continue;
-    el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
-  }
-}
-
-export function icon(name, cls = 'ic') {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('class', cls);
-  const use = document.createElementNS(ns, 'use');
-  use.setAttribute('href', `#i-${name}`);
-  svg.appendChild(use);
-  return svg;
 }
 
 export const $ = (sel, root = document) => root.querySelector(sel);
-export const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
+export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-export function money(v, withIcon = true) {
-  const span = h('span', { class: 'pr' });
-  if (withIcon) span.appendChild(icon('coin'));
-  span.appendChild(document.createTextNode(formatMoney(v)));
-  return span;
-}
-
-export function stars(value, max = 5) {
-  const el = h('span', { class: 'stars' });
-  for (let i = 1; i <= max; i++) {
-    const full = value >= i - 0.25, half = !full && value >= i - 0.75;
-    const ic = icon('star');
-    if (!full && !half) ic.classList.add('empty');
-    if (half) { ic.style.color = 'var(--gold)'; ic.style.opacity = '0.55'; }
-    el.appendChild(ic);
-  }
-  return el;
-}
-
-export function bar(frac, cls = '') {
-  const v = Math.max(0, Math.min(1, frac));
-  const c = cls || (v < 0.25 ? 'bad' : v < 0.5 ? 'warn' : '');
-  return h('div', { class: `bar ${c}` }, h('i', { style: { width: `${Math.round(v * 100)}%` } }));
-}
-
-export function stepper(value, onChange, { step = 1, min = 0, max = 9999, fmt = (v) => v } = {}) {
-  const b = h('b', {}, fmt(value));
-  const set = (nv) => { nv = Math.max(min, Math.min(max, nv)); value = nv; b.textContent = fmt(nv); onChange(nv); };
-  const rep = (d) => {
-    let t, iv;
-    const start = (e) => { e.preventDefault(); set(value + d); t = setTimeout(() => { iv = setInterval(() => set(value + d * 2), 70); }, 380); };
-    const stop = () => { clearTimeout(t); clearInterval(iv); };
-    return { onpointerdown: start, onpointerup: stop, onpointerleave: stop, onpointercancel: stop };
+/** Fait défiler un nombre affiché jusqu'à `to`. */
+export function tweenNumber(el, from, to, dur, format) {
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = format(from + (to - from) * e);
+    if (k < 1) el._tween = requestAnimationFrame(step);
   };
-  return h('div', { class: 'stepper' }, h('button', { ...rep(-step), 'aria-label': 'Diminuer' }, '−'), b, h('button', { ...rep(step), 'aria-label': 'Augmenter' }, '+'));
+  cancelAnimationFrame(el._tween);
+  el._tween = requestAnimationFrame(step);
 }
 
-export function toggle(on, onChange) {
-  const el = h('button', { class: `toggle${on ? ' on' : ''}`, role: 'switch', 'aria-checked': String(!!on) });
-  el.addEventListener('click', () => { on = !on; el.classList.toggle('on', on); el.setAttribute('aria-checked', String(on)); onChange(on); });
-  return el;
-}
+export const prefs = { vibrate: true };
 
-export function tabs(list, current, onSelect) {
-  return list.map(([id, label]) => h('button', { class: `tab${id === current ? ' on' : ''}`, onclick: () => onSelect(id) }, label));
+export function vibrate(pattern) {
+  if (!prefs.vibrate) return;
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* non pris en charge */ }
 }
-
-export const isTouch = () => matchMedia('(pointer: coarse)').matches;
-export const isNarrow = () => matchMedia('(max-width: 760px)').matches;

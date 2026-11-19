@@ -1,74 +1,74 @@
-# L'Auberge des Sommets
+# Prisme
 
-Jeu de gestion en 2D isométrique, jouable dans le navigateur (ordinateur et téléphone).
-Vous reprenez une petite auberge au pied des montagnes et la transformez, saison après saison, en destination incontournable de la vallée.
+**Le puzzle de blocs lumineux.** Glissez les pièces sur la grille 8×8, complétez des lignes et des colonnes pour les faire éclater, enchaînez les combos. Une partie se lance en une seconde, se comprend sans explication et se rejoue « juste une dernière fois ».
 
-Tout est fait en HTML, CSS et JavaScript, sans dépendance ni serveur : les graphismes, la musique et les bruitages sont générés par le code. La partie est sauvegardée automatiquement dans le navigateur.
+Jouable dans le navigateur, sur téléphone comme sur ordinateur, en français et en anglais. Aucune dépendance, aucun serveur, aucune publicité : graphismes, musique et bruitages sont générés par le code. Le jeu s'installe sur l'écran d'accueil du téléphone et fonctionne hors ligne. La progression est sauvegardée dans le navigateur.
 
 ## Lancer le jeu
 
-Le jeu utilise des modules JavaScript : il doit être servi en HTTP. Ouvrir `index.html` directement depuis le disque (`file://`) ne marche pas.
+Le jeu utilise des modules JavaScript : il doit être servi en HTTP (ouvrir `index.html` depuis le disque ne marche pas).
 
 ```bash
 node tools/serve.mjs
 ```
 
-Ouvrez ensuite <http://localhost:8080>. N'importe quel serveur statique fait l'affaire (`python3 -m http.server`, Netlify, GitHub Pages…).
+Ouvrez ensuite <http://localhost:8080>. N'importe quel serveur statique convient (`python3 -m http.server`, Netlify, GitHub Pages…).
 
 **GitHub Pages** : le workflow `.github/workflows/pages.yml` publie le site à chaque push sur `main`. Il faut d'abord activer Pages dans *Settings › Pages › Source : GitHub Actions*.
 
 ## Comment jouer
 
-| Action | Ordinateur | Téléphone |
+| Action | Téléphone | Ordinateur |
 |---|---|---|
-| Déplacer la vue | glisser, flèches / ZQSD / WASD | glisser à un doigt |
-| Zoom | molette, `+` / `-` | pincer |
-| Voir une fiche | clic sur un client, un employé, une pièce, un meuble | toucher |
-| Construire une pièce | Construire › Pièces, puis glisser sur le terrain | glisser, puis « Construire » |
-| Placer un meuble | clic (`R` pour tourner) | toucher pour prévisualiser, toucher à nouveau ou « Placer » |
-| Vitesse | `Espace` pause, `1` `2` `3` | boutons du HUD |
+| Poser une pièce | la glisser du bas vers la grille (elle flotte au-dessus du doigt) | glisser-déposer à la souris |
+| Au clavier | | `1` `2` `3` choisir · flèches déplacer · `Entrée` poser · `Échap` annuler |
+| Pouvoirs | toucher le bouton, puis la pièce (tourner) ou la grille (bombe) | idem, ou `R` `B` `N` |
+| Pause | bouton en haut à gauche | `Échap` ou `P` |
 
-Les voyageurs arrivent par le chemin du village et s'enregistrent à la réception. Chacun choisit une chambre selon sa capacité, son standing et votre prix. Pendant le séjour, ils mangent, se détendent, partent en randonnée, puis paient en partant et laissent un avis. Ces avis font votre réputation, et la réputation attire plus de monde, y compris de nouveaux profils.
+- Une **ligne ou une colonne complète** disparaît. Plusieurs d'un coup rapportent beaucoup plus (×1, ×3, ×6, ×10…).
+- **Combo** : tant que vous complétez une ligne au moins toutes les 3 pièces, le multiplicateur monte (jusqu'à ×5). Les trois points du badge indiquent les pièces restantes avant de le perdre.
+- **Ligne prisme** : une ligne d'une seule couleur vaut double et fait monter la jauge plus vite.
+- **Jauge d'éclat** : les lignes la remplissent. Pleine, elle donne un pouvoir : **Tourner** une pièce, **Bombe** 3×3, **Relancer** les pièces.
+- La partie s'arrête quand plus aucune pièce ne rentre (et qu'aucun pouvoir ne peut vous sauver).
 
 ## Contenu
 
-- **Construction libre** : 13 types de pièces tracées à la main. Les pièces identiques voisines fusionnent, les portes se posent toutes seules (et se modifient avec l'outil Portes), et les placements qui couperaient un passage sont refusés. On peut changer sols et murs, déplacer, revendre ou démolir, et annuler la dernière pièce construite.
-- **72 meubles**, chacun utile : couchages, confort, décor, chaleur, rangement, équipement de cuisine, activités. Le standing d'une chambre (Simple, Confortable, Suite) se calcule à partir du lit, du confort, du décor et de l'espace.
-- **Voyageurs** : 7 profils (randonneur, famille, couple, voyageur de passage, aventurier, client fortuné, client exigeant) et 10 traits. Chaque groupe a des noms, une apparence, un budget, une exigence, trois besoins (énergie, appétit, détente) et des pensées. Ils choisissent leurs activités selon leurs besoins.
-- **Restaurant et bar** : 11 recettes et 9 boissons, avec une carte et des prix modifiables et des recettes de saison. Le service suit une vraie chaîne : commande, cuisinier, serveur, table. La qualité dépend du cuisinier et de l'équipement.
-- **Personnel** : réceptionniste, agent d'entretien, cuisinier, serveur, guide et gérant. Chacun a une compétence (qui progresse), un salaire, des horaires, un trait et des heures supplémentaires si un service est en cours. Au début, c'est vous qui faites l'accueil et le ménage.
-- **Économie** : grand livre par catégorie, charges quotidiennes (salaires, entretien, chauffage plus cher en hiver) et prix qui jouent sur la demande. Stocks livrés le lendemain par la charrette (ou en express), réassort automatique, prêts bancaires.
-- **Progression** : 5 paliers d’établissement, 5 parcelles à acheter et 28 objectifs avec récompense.
-- **Saisons et météo** : visuels, demande, profils de voyageurs, chauffage, randonnées et terrasse changent selon la saison. 7 types de météo.
-- **Événements et histoires** : 16 événements aléatoires, la plupart avec des choix, et 5 personnages récurrents en plusieurs chapitres (jeunes mariés, vieux guide, peintre, alpiniste, critique culinaire), avec des objets uniques à gagner. Des célébrités et des inspecteurs passent incognito.
+- **Classique** : sans fin, pour battre son record. Le générateur de pièces est bienveillant au début (il garantit des lots jouables et propose souvent de quoi compléter une ligne, davantage pendant un combo), puis la pression monte progressivement.
+- **Aventure** : 60 niveaux en 6 mondes, chacun avec sa mécanique (lignes, gemmes à récolter, pierres à briser, lignes prisme, puis mélanges), un nombre de pièces limité et 1 à 3 étoiles selon les pièces restantes.
+- **Défi du jour** : 30 pièces, les mêmes pour tout le monde ce jour-là, médailles bronze / argent / or, série de jours consécutifs, calendrier et résultat à partager.
+- **Progression** : niveaux d'expérience, 28 trophées, 7 thèmes visuels à débloquer (Nuit, Aurore, Océan, Jardin, Néon, Papier, Or), statistiques détaillées.
+- **Confort** : initiation en un geste, conseils contextuels affichés une seule fois, symboles sur les couleurs (daltonisme), animations réduites, vibrations, musique et sons réglables, reprise automatique de la partie en cours.
 
-## Tests
+## Tests et équilibrage
 
 ```bash
-npm test          # tests des systèmes (Node, sans navigateur)
-npm run test:e2e  # test de bout en bout Playwright (ordinateur + téléphone)
-npm run sim -- 40 7 --auto   # simulation équilibrage : 40 jours, graine 7, joueur automatique
+npm test                         # règles, contenu, profil, traductions (Node, sans navigateur)
+npm run test:e2e                 # bout en bout Playwright, ordinateur + téléphone tactile
+npm run sim -- classic 40        # 40 parties classiques jouées par l'IA
+npm run sim -- levels 20         # taux de victoire de chaque niveau d'Aventure
+npm run sim -- daily 30          # médailles des 30 prochains défis du jour
 ```
 
-Les tests unitaires couvrent la construction, les murs et portes, le pathfinding, le mobilier, l’économie, les stocks, la sauvegarde, les objectifs et les paliers, ainsi que le fonctionnement réel du restaurant, du bar, de la salle de jeux, de la boutique, des excursions et du spa. Une simulation de 12 jours vérifie aussi qu’aucun client ne reste bloqué.
+Un joueur automatique (`src/game/bot.js`) sert à l'équilibrage : chaque niveau d'Aventure est testé comme gagnable, les défis du jour ne sont retenus que si l'IA peut les terminer, et les seuils de médailles sont calculés à partir de son score.
 
 ## Architecture
 
 ```
-src/core     utilitaires purs (générateur aléatoire déterministe, couleurs)
-src/data     contenu déclaratif : pièces, meubles, voyageurs, recettes, paliers, objectifs, événements, histoires
-src/sim      simulation sans DOM : monde, pathfinding A*, visiteurs, personnel, restaurant, économie, événements
-src/render   rendu Canvas 2D isométrique procédural : sol pré-rendu, sprites en cache, éclairage, météo
-src/ui       interface : HUD, panneaux, inspecteur, modales, saisie souris/tactile
-src/audio    musique générative et ambiances WebAudio
+src/core     générateur aléatoire déterministe, traductions FR/EN
+src/game     règles sans DOM : pièces, grille, générateur, moteur, niveaux, défi du jour, IA
+src/meta     profil, expérience, trophées, thèmes
+src/render   rendu Canvas 2D : blocs procéduraux mis en cache, effets (éclats, faisceaux, textes)
+src/ui       écran de jeu (saisie souris/tactile/clavier), menus, icônes SVG
+src/audio    sons et musique générative (WebAudio)
 tests/       tests Node et Playwright
+tools/       serveur local, simulation, génération des icônes
 docs/        document de conception
 ```
 
-Pour ajouter du contenu, il suffit d'ajouter une entrée dans `src/data/*.js`. Pour un nouveau meuble, ajoutez aussi son modèle dans `src/render/models.js` (sinon un bloc générique s'affiche).
+Le moteur (`src/game/engine.js`) est un état JSON pur : chaque action renvoie une liste d'événements que l'interface traduit en animations et en sons. La partie se sauvegarde donc telle quelle après chaque coup.
 
 ## Licences
 
 - Code : MIT (voir `LICENSE`).
-- Polices Fraunces et Nunito : SIL Open Font License 1.1, auto-hébergées (`assets/fonts/`, licences jointes).
-- Aucun autre fichier externe : graphismes, sons et musique sont générés par le code.
+- Police Fredoka : SIL Open Font License 1.1, auto-hébergée (`assets/fonts/`, licence jointe).
+- Aucun autre fichier externe.
