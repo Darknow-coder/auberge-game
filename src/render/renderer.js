@@ -53,8 +53,14 @@ export class GameView {
     const cell = (b.width - 2 * inset) / N;
     this.board = { x: b.left, y: b.top, size: b.width, cell, inset, gx: b.left + inset, gy: b.top + inset };
     const t = trayEl.getBoundingClientRect();
-    const sw = t.width / 3;
-    this.slots = [0, 1, 2].map((i) => ({ x: t.left + i * sw, y: t.top, w: sw, h: t.height }));
+    if (t.height > t.width) {
+      // Plateau vertical (disposition paysage) : pièces empilées.
+      const sh = t.height / 3;
+      this.slots = [0, 1, 2].map((i) => ({ x: t.left, y: t.top + i * sh, w: t.width, h: sh }));
+    } else {
+      const sw = t.width / 3;
+      this.slots = [0, 1, 2].map((i) => ({ x: t.left + i * sw, y: t.top, w: sw, h: t.height }));
+    }
   }
 
   get trayCell() {
@@ -79,7 +85,7 @@ export class GameView {
   hitTray(px, py) {
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
-      if (px >= s.x && px <= s.x + s.w && py >= s.y - 10 && py <= s.y + s.h + 10) return i;
+      if (px >= s.x - 10 && px <= s.x + s.w + 10 && py >= s.y - 10 && py <= s.y + s.h + 10) return i;
     }
     return -1;
   }

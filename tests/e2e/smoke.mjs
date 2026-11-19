@@ -221,6 +221,22 @@ try {
   await mob.screenshot({ path: path.join(shots, 'mobile-partie.png') });
   await mctx.close();
 
+  // ------------------------------------------------------------ Téléphone à l'horizontale
+  const lctx = await browser.newContext({ ...devices['iPhone 13 landscape'], locale: 'fr-FR' });
+  const land = await lctx.newPage();
+  watch(land, 'paysage');
+  await fresh(land, { tutorialDone: true });
+  await land.tap('#btn-play');
+  await land.waitForTimeout(400);
+  const ll = await land.evaluate(() => {
+    const v = window.__prisme.view, b = v.board, last = v.slots[2];
+    const p = document.querySelector('#powers').getBoundingClientRect();
+    return document.querySelector('#screen-game').classList.contains('landscape') && b.y >= 0 && b.y + b.size <= innerHeight && last.y + last.h <= innerHeight + 1 && last.x + last.w <= innerWidth && p.bottom <= innerHeight;
+  });
+  check(ll, 'disposition paysage : grille, pièces et pouvoirs visibles');
+  await land.screenshot({ path: path.join(shots, 'paysage.png') });
+  await lctx.close();
+
   check(errors.length === 0, `aucune erreur JavaScript${errors.length ? ' :\n  ' + errors.join('\n  ') : ''}`);
   await browser.close();
 } catch (e) {

@@ -2,11 +2,13 @@
 // en effets visuels et sonores, pouvoirs, initiation et enchaînement de fin de partie.
 import { h, $, tweenNumber, vibrate } from './dom.js';
 import { icon } from './icons.js';
-import { t, fmt } from '../core/i18n.js';
+import { t, fmt, getLang } from '../core/i18n.js';
 import { SHAPES } from '../game/pieces.js';
 import { N } from '../game/board.js';
-import { place, usePower, giveUp, trayFits, goalProgress, gaugeMax, COMBO_GRACE, TUTORIAL } from '../game/engine.js';
+import { place, usePower, giveUp, trayFits, goalProgress, gaugeMax, comboMult, COMBO_GRACE, TUTORIAL } from '../game/engine.js';
+import { bestMove } from '../game/bot.js';
 import { unlockAchievements } from '../meta/achievements.js';
+import { clearSpriteCache } from '../render/blocks.js';
 
 const POWERS = ['rotate', 'bomb', 'reroll'];
 const GOAL_ICON = { score: 'star', lines: 'lines', gems: 'gem', stones: 'stone', pure: 'prism' };
@@ -42,8 +44,8 @@ export class GameScreen {
         h('div.combo#combo', h('span.combo-ic', { html: icon('flame') }), h('span.combo-t'), h('span.combo-dots'))),
       h('div.play-area',
         h('div#board-slot'),
-        h('div.banner#banner', { role: 'status', 'aria-live': 'polite' }),
         h('div#tray-slot')),
+      h('div.banner#banner', { role: 'status', 'aria-live': 'polite' }),
       h('div.powers#powers',
         h('div.gauge', { title: t('game.gauge') }, h('span.gauge-ic', { html: icon('sparkle') }), h('div.gauge-bar', h('div.gauge-fill#gauge-fill'))),
         h('div.power-row', POWERS.map(pw))),
@@ -67,15 +69,25 @@ export class GameScreen {
   layout() {
     if (!this.s) return;
     const el = this.el;
-    const W = el.clientWidth, H = el.clientHeight;
-    const hud = $('.hud', el).offsetHeight;
-    const status = $('.status-row', el).offsetHeight;
-    const powers = this.s.usePowers ? $('#powers', el).offsetHeight : 0;
-    const avail = H - hud - status - powers - 28;
-    const size = Math.floor(Math.max(200, Math.min(W - 28, avail / 1.4, 540)));
+    const W = window.innerWidth, H = window.innerHeight;
+    // Paysage peu haut (téléphone tourné, petite fenêtre) : infos à gauche, pièces à droite.
+    const landscape = W > H * 1.15 && H < 640;
+    el.classList.toggle('landscape', landscape);
+    let size;
+    if (landscape) {
+      size = Math.floor(Math.max(180, Math.min(H - 24, (W - 250) / 1.42, 540)));
+    } else {
+      const hud = $('.hud', el).offsetHeight;
+      const status = $('.status-row', el).offsetHeight;
+      const powers = this.s.usePowers ? $('#powers', el).offsetHeight : 0;
+      const avail = el.clientHeight - hud - status - powers - 28;
+      size = Math.floor(Math.max(200, Math.min(el.clientWidth - 28, avail / 1.4, 540)));
+    }
+    if (size !== this.lastSize) { this.lastSize = size; clearSpriteCache(); }
     el.style.setProperty('--board', `${size}px`);
     this.view.resize();
     this.view.layout($('#board-slot', el), $('#tray-slot', el));
+    this.placeBanner();
   }
 
   // ------------------------------------------------------------------ cycle de vie
@@ -123,13 +135,24 @@ export class GameScreen {
   loop() {
     cancelAnimationFrame(this.raf);
     this.last = performance.now();
+    this.idleSince = performance.now();
     const tick = (now) => {
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
+      this.idleHint(now);
       this.view.frame(dt);
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);
+  }
+
+  /** Pendant les premières parties, montre un bon coup si le joueur hésite longtemps. */
+  idleHint(now) {
+    const v = this.view;
+    if (v.drag || v.mode || !this.playing || this.s.status !== 'play') { this.idleSince = now; return; }
+    if (v.hand || this.app.profile.stats.games >= 3 || now - this.idleSince < 15000) return;
+    const m = bestMove(this.s);
+    if (m) v.hand = { ti: m.ti, x: m.x, y: m.y, t0: v.time };
   }
 
   get playing() { return this.s && !this.ending && (this.s.status === 'play' || this.s.status === 'stuck') && !this.app.modalOpen; }
@@ -180,7 +203,7 @@ export class GameScreen {
     combo.classList.toggle('on', on);
     combo.classList.toggle('hot', s.combo >= 6);
     if (on) {
-      $('.combo-t', combo).textContent = t('game.combo', { n: s.combo });
+      $('.combo-t', combo).textContent = `${t('game.combo', { n: s.combo })} · ×${comboMult(s.combo).toLocaleString(getLang())}`;
       const left = COMBO_GRACE - s.sinceClear;
       $('.combo-dots', combo).innerHTML = Array.from({ length: COMBO_GRACE }, (_, i) => `<i class="${i < left ? 'on' : ''}"></i>`).join('');
     }
@@ -203,7 +226,24 @@ export class GameScreen {
     if (!text) { b.classList.remove('show'); return; }
     b.textContent = text;
     b.className = `banner show ${cls}`;
+    this.placeBanner();
     if (dur) this.bannerTimer = setTimeout(() => b.classList.remove('show'), dur);
+  }
+
+  /** Bannière sous les pièces (portrait) ou dans la colonne de gauche (paysage). */
+  placeBanner() {
+    const b = $('#banner', this.el);
+    if (this.el.classList.contains('landscape')) {
+      const st = $('.status-row', this.el).getBoundingClientRect();
+      b.style.left = `${st.left + st.width / 2}px`;
+      b.style.top = `${st.bottom + 8}px`;
+      b.style.maxWidth = `${st.width}px`;
+    } else {
+      const tr = $('#tray-slot', this.el).getBoundingClientRect();
+      b.style.left = `${tr.left + tr.width / 2}px`;
+      b.style.top = `${Math.min(tr.bottom + 4, window.innerHeight - 60)}px`;
+      b.style.maxWidth = `${tr.width - 10}px`;
+    }
   }
 
   /** Conseil affiché une seule fois par profil. */
@@ -237,6 +277,8 @@ export class GameScreen {
     this.app.sound.unlock();
     const v = this.view, x = e.clientX, y = e.clientY;
     this.kb = null;
+    this.idleSince = performance.now();
+    if (v.hand && !s0tutorial(this.s)) v.hand = null;
     if (v.mode === 'bomb') {
       const c = v.cellAt(x, y);
       if (c) { v.bomb = { x: c[0], y: c[1] }; this.bombPointer = e.pointerId; }
@@ -244,8 +286,12 @@ export class GameScreen {
       return;
     }
     const ti = v.hitTray(x, y);
+    if (v.mode === 'rotate') {
+      if (ti >= 0 && this.s.tray[ti]) this.doPower('rotate', { ti });
+      else this.setMode(null);
+      return;
+    }
     if (ti < 0 || !this.s.tray[ti]) return;
-    if (v.mode === 'rotate') { this.doPower('rotate', { ti }); return; }
     if (this.s.status !== 'play') return;
     e.preventDefault();
     const sh = SHAPES[this.s.tray[ti].k];
@@ -273,7 +319,7 @@ export class GameScreen {
       v.drag.y = e.clientY - v.drag.offY;
       v.updateGhost();
       const after = v.drag.ghost && `${v.drag.ghost.x},${v.drag.ghost.y}`;
-      if (after && after !== before && v.drag.ghost.set.size) vibrate(4);
+      if (after && after !== before && v.drag.ghost.set.size) { vibrate(4); this.app.sound.preview(); }
     } else if (v.mode === 'bomb' && this.bombPointer === e.pointerId) {
       const c = v.cellAt(e.clientX, e.clientY);
       v.bomb = c ? { x: c[0], y: c[1] } : null;
@@ -314,6 +360,7 @@ export class GameScreen {
   onKey(e) {
     if (!this.playing) return false;
     const v = this.view, s = this.s, k = e.key;
+    this.idleSince = performance.now();
     if (['1', '2', '3'].includes(k)) {
       const ti = +k - 1;
       if (!s.tray[ti]) return true;
@@ -371,7 +418,8 @@ export class GameScreen {
     v.drag = null;
     const r = place(this.s, ti, x, y);
     if (!r.ok) { this.app.sound.invalid(); return; }
-    if (v.hand) { v.hand = null; this.banner(null); }
+    if (v.hand) { if (this.s.tutorial && this.s.moves === 1) this.banner(null); v.hand = null; }
+    this.idleSince = performance.now();
     if (this.s.tutorial && !this.app.profile.tutorialDone) { this.app.profile.tutorialDone = true; this.app.saveProfile(); }
     this.handle(r.events);
   }
@@ -404,7 +452,8 @@ export class GameScreen {
       if (kind === 'bomb' && r.reason === 'nothing') this.view.bomb = null;
       return;
     }
-    if (kind !== 'rotate' || this.s.powers.rotate <= 0) this.setMode(null, true);
+    // Une charge par utilisation : on quitte le mode, pour pouvoir ensuite glisser la pièce.
+    this.setMode(null, true);
     this.handle(r.events);
   }
 
@@ -508,12 +557,15 @@ export class GameScreen {
     this.refreshHud();
     // Trophées débloqués en cours de partie.
     const got = unlockAchievements(app.profile, s, null, { liveOnly: true });
-    got.forEach((a, i) => {
+    got.forEach((a) => {
       this.liveTrophies.push(a);
+      // Un trophée à la fois : chaque texte attend que le précédent ait disparu.
+      const at = Math.max(performance.now() + 700, this.nextTrophyAt || 0);
+      this.nextTrophyAt = at + 2300;
       setTimeout(() => {
         snd.trophy();
         v.fx.text(t('result.trophy', { name: t(`ach.${a.id}`) }), b.x + b.size / 2, b.y + b.size * 0.1, { size: 17, color: app.theme.ui.accent, dur: 2.2, dy: 26 });
-      }, 700 + i * 900);
+      }, at - performance.now());
     });
     if (s.status === 'play' || s.status === 'stuck') app.saveSession(s);
     if (got.length) app.saveProfile();
@@ -553,8 +605,9 @@ export class GameScreen {
       setTimeout(() => { snd.win(); v.fx.confetti(v.w, 90); }, 300);
       delay = 1600;
     } else if (e.reason === 'done') {
+      v.fx.text(t('result.dailyDone'), cx, cy, { size: 34, rainbow: true, dur: 1.5, delay: 0.2 });
       setTimeout(() => snd.win(), 200);
-      delay = 900;
+      delay = 1300;
     } else {
       v.fx.text(t(e.reason === 'moves' ? 'game.noMoves' : 'game.noSpace'), cx, cy, { size: 36, color: '#fff', dur: 1.8, delay: 0.25 });
       setTimeout(() => { v.grayOut(); s.mode === 'adventure' ? snd.lose() : snd.gameOver(); }, 250);
@@ -566,3 +619,4 @@ export class GameScreen {
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const s0tutorial = (s) => s.tutorial && s.moves === 0;

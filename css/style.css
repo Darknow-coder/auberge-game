@@ -301,8 +301,8 @@ button:disabled { cursor: default; }
 #board-slot { width: var(--board); height: var(--board); flex: none; }
 #tray-slot { width: var(--board); height: calc(var(--board) * .36); flex: none; }
 .banner {
-  position: absolute; left: 50%; top: calc(50% + var(--board) * .6975 + 2px); transform: translate(-50%, 8px); z-index: 3;
-  max-width: calc(var(--board) - 20px); padding: 9px 16px; border-radius: 16px; text-align: center;
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, 8px); z-index: 3;
+  padding: 9px 16px; border-radius: 16px; text-align: center;
   background: var(--panel); border: 1px solid var(--edge); font-weight: 600; font-size: 15px; line-height: 1.25;
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 10px 30px -10px rgba(0,0,0,.5);
   opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; width: max-content;
@@ -344,6 +344,22 @@ button:disabled { cursor: default; }
 .stuck { min-width: 250px; }
 .stuck-s { color: var(--muted); margin: 4px 0 12px; }
 .mode-bomb #board-slot, .mode-rotate #tray-slot { cursor: crosshair; }
+
+/* Paysage peu haut : colonne d'infos à gauche, grille, puis pièces empilées à droite. */
+.game-screen.landscape {
+  display: none; padding: 12px calc(env(safe-area-inset-right, 0px) + 12px) 12px calc(env(safe-area-inset-left, 0px) + 12px);
+  grid-template-columns: 220px auto; grid-template-rows: auto auto 1fr; grid-template-areas: 'hud play' 'status play' 'powers play';
+  justify-content: center; align-content: center; column-gap: 20px;
+}
+.game-screen.landscape.active { display: grid; }
+.landscape .hud { grid-area: hud; width: 220px; grid-template-columns: 50px 1fr 50px; }
+.landscape .status-row { grid-area: status; width: 220px; margin: 6px 0; }
+.landscape .powers { grid-area: powers; width: 220px; align-self: end; }
+.landscape .power-row { grid-template-columns: 1fr; gap: 8px; }
+.landscape .power { height: 44px; }
+.landscape .play-area { grid-area: play; flex-direction: row; gap: calc(var(--board) * .04); }
+.landscape #tray-slot { width: calc(var(--board) * .38); height: var(--board); }
+.landscape .stuck { left: calc(50% - var(--board) * .19); }
 
 /* ------------------------------------------------------------ modales */
 #modal-root { position: fixed; inset: 0; z-index: 10; pointer-events: none; }

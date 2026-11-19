@@ -145,6 +145,8 @@ export class Sound {
   // ------------------------------------------------------------ effets
   tap() { if (this.ready) this.tone({ f: 1400, dur: 0.05, gain: 0.05, type: 'triangle', rev: 0 }); }
   pick() { if (this.ready) this.tone({ f: 880, f2: 1320, dur: 0.07, gain: 0.07, type: 'triangle', rev: 0.05 }); }
+  /** Anticipation : la pièce tenue complèterait une ligne. */
+  preview() { if (this.ready) this.tone({ f: 1760, dur: 0.12, gain: 0.025, type: 'sine', rev: 0.4 }); }
   invalid() { if (this.ready) this.tone({ f: 190, f2: 120, dur: 0.16, gain: 0.14, type: 'triangle', rev: 0 }); }
 
   place(n = 3) {

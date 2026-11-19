@@ -237,6 +237,15 @@ function settings(app) {
         sw('motion', 'motion', t('settings.motion')),
         h('div.set-row', h('span.set-ic', { html: icon('globe') }), h('div.set-txt', h('span', { text: t('settings.lang') })), langs)),
       h('div.card.btn-col',
+        window.__installPrompt ? h('button.btn.primary', {
+          html: `${icon('home')}<span>${t('settings.install')}</span>`,
+          onclick: async () => {
+            const ev = window.__installPrompt;
+            window.__installPrompt = null;
+            try { await ev.prompt(); } catch { /* refusé */ }
+            app.show('settings');
+          },
+        }) : null,
         h('button.btn', { html: `${icon('help')}<span>${t('pause.help')}</span>`, onclick: () => app.help() }),
         h('button.btn', {
           html: `${icon('replay')}<span>${t('settings.tutorial')}</span>`,
