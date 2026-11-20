@@ -1,4 +1,4 @@
-// Mode Aventure : 60 niveaux répartis en 6 mondes, sur la grille 8 × 9.
+// Mode Aventure : 80 niveaux répartis en 8 mondes, sur la grille 8 × 9.
 // Chaque niveau part d'un motif dessiné à la main (enclos à moitié construits, murs, cuvettes),
 // éventuellement retourné, puis habillé selon le monde : blocs colorés, pierres, gemmes.
 // Le tirage est déterministe : le niveau 12 est le même pour tout le monde.
@@ -12,6 +12,8 @@ export const WORLDS = [
   { id: 4, from: 31, to: 40, icon: 'prism' },
   { id: 5, from: 41, to: 50, icon: 'leaf' },
   { id: 6, from: 51, to: 60, icon: 'peak' },
+  { id: 7, from: 61, to: 70, icon: 'cloud' },
+  { id: 8, from: 71, to: 80, icon: 'crystal' },
 ];
 
 // Motifs 8 × 9 : 'x' = mur (habillé selon le niveau), 'o' = gemme, '.' = vide.
@@ -36,6 +38,17 @@ const T = {
   zigzag: ['........', '.x......', '..x.....', '.x.x....', '....x...', '...x.x..', '......x.', '.....x.x', '........'],
   pond: ['........', '..xx.x..', '.x....x.', '.x....x.', '.x......', '.x......', '..xx..x.', '........', '........'],
   basin: ['........', '........', '.x....x.', '.x....x.', '.x....x.', '.x....x.', '.xx..xx.', '........', '........'],
+  // Monde 8 : cristaux (chiffre = taille d'enclos exigée) placés dans les bassins à refermer.
+  archC: ['........', '........', '..xxxx..', '.x....x.', '.x.3..x.', '.x....x.', '........', '........', '........'],
+  basinC: ['........', '........', '.x....x.', '.x.4..x.', '.x..6.x.', '.x....x.', '.xx..xx.', '........', '........'],
+  frameC: ['........', '.xxx.xx.', '.x....x.', '.x3...x.', '....4...', '.x...3x.', '.xx.xxx.', '........', '........'],
+  pondC: ['........', '..xx.x..', '.x....x.', '.x.5..x.', '.x...6..', '.x......', '..xx..x.', '........', '........'],
+  dotsC: ['........', '..x...x.', '...2....', '.x..x...', '......x.', '..x.3...', '.4...x..', '.x....4.', '........'],
+  bigC: ['........', '.xxxxxx.', '.x......', '.x.6....', '.x......', '.x...8..', '.x......', '.xxxxxx.', '........'],
+  heartC: ['........', '.xx..xx.', 'x..xx..x', 'x.4...5x', '.x..6.x.', '..x..x..', '........', '...oo...', '........'],
+  twinC: ['........', '........', '.x..x..x', '.x34x56x', '.x..x..x', '.xxxxxxx', '........', '........', '........'],
+  bigS: ['........', '.xxxxxx.', '.x......', '.x..5...', '.x......', '.x.5....', '.x......', '.xxxxxx.', '........'],
+  finalC: ['........', '..x...x.', '........', '.x.4..x.', '........', '..x.6...', '......x.', '.x..5...', '........'],
 };
 
 // [motif, objectifs, pièces disponibles, options]
@@ -109,6 +122,28 @@ const TABLE = [
   ['combs', [g('stones'), g('gems', 4)], 26, { mat: 'stone', gems: 4, diff: 0.48 }],
   ['heart', [g('whites', 4), g('big', 7)], 26, { mat: 'color', diff: 0.5 }],
   ['cross', [g('score', 5000)], 30, { diff: 0.55 }],
+  // Monde 7 — Vallée de brume : la brume s'étend, il faut l'encercler pour la dissiper
+  ['cup', [g('fog')], 8, { as: 'fog', fogEvery: 4, diff: 0.1 }],
+  ['cups2', [g('fog')], 10, { as: 'fog', fogEvery: 4, diff: 0.12 }],
+  ['dots', [g('fog')], 14, { as: 'none', fog: 3, fogEvery: 3, diff: 0.15 }],
+  ['frame', [g('fog')], 16, { as: 'none', fog: 3, fogEvery: 3, diff: 0.18 }],
+  ['bowls', [g('fog'), g('areas', 6)], 20, { as: 'none', fog: 4, fogEvery: 3, diff: 0.2 }],
+  ['heart', [g('fog')], 18, { as: 'none', fog: 4, fogEvery: 3, diff: 0.22 }],
+  ['grid', [g('fog')], 20, { as: 'none', fog: 5, fogEvery: 3, diff: 0.25 }],
+  ['walls', [g('fog'), g('whites', 2)], 22, { as: 'none', fog: 4, fogEvery: 3, diff: 0.28 }],
+  ['maze', [g('fog')], 22, { as: 'none', fog: 5, fogEvery: 2, diff: 0.3 }],
+  ['pond', [g('fog'), g('big', 8)], 26, { as: 'none', fog: 5, fogEvery: 3, diff: 0.32 }],
+  // Monde 8 — Cœur de cristal : un cristal « n » ne se récolte que dans un enclos d'au moins n cases
+  ['archC', [g('crystals', 1)], 10, { as: 'none', diff: 0.15 }],
+  ['basinC', [g('crystals', 2)], 12, { as: 'none', diff: 0.18 }],
+  ['frameC', [g('crystals', 3)], 16, { as: 'none', diff: 0.2 }],
+  ['pondC', [g('crystals', 2), g('whites', 1)], 22, { as: 'none', diff: 0.22 }],
+  ['dotsC', [g('crystals', 3)], 24, { as: 'none', diff: 0.25 }],
+  ['bigC', [g('crystals', 2)], 16, { as: 'none', diff: 0.28 }],
+  ['heartC', [g('crystals', 3), g('fog')], 22, { as: 'fog', fogEvery: 4, diff: 0.3 }],
+  ['twinC', [g('crystals', 4)], 22, { as: 'none', diff: 0.35 }],
+  ['bigS', [g('crystals', 2), g('stones')], 22, { as: 'none', mat: 'mix', diff: 0.4 }],
+  ['finalC', [g('crystals', 3), g('score', 2500)], 32, { as: 'none', diff: 0.45 }],
 ];
 
 const flipV = (rows) => rows.slice().reverse();
@@ -134,12 +169,16 @@ function buildLevel(n, [tpl, goals, moves, opt]) {
       else v = 'rgb'[randInt(rng, 3)];
       grid[y][x] = v;
     }
-  // Gemmes supplémentaires sur des cases intérieures vides.
+  // Les repères 'o' du motif deviennent des gemmes (par défaut), de la brume, ou rien.
+  const as = { gem: 'o', fog: '~', none: '.' }[opt.as || 'gem'];
+  for (const row of grid) for (let x = 0; x < COLS; x++) if (row[x] === 'o') row[x] = as;
+  // Objets supplémentaires sur des cases intérieures vides : gemmes, brume, cristaux.
   const spots = [];
   for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++) if (grid[y][x] === '.') spots.push([x, y]);
   shuffle(rng, spots);
-  for (const [x, y] of spots.slice(0, opt.gems || 0)) grid[y][x] = 'o';
-  return { n, rows: grid.map((r) => r.join('')), goals: goals.map((x) => ({ ...x })), moves, diff: opt.diff ?? 0.2 };
+  const extra = [...Array(opt.gems || 0).fill('o'), ...Array(opt.fog || 0).fill('~'), ...(opt.crystals || []).map(String)];
+  extra.forEach((ch, i) => { const [x, y] = spots[i]; grid[y][x] = ch; });
+  return { n, rows: grid.map((r) => r.join('')), goals: goals.map((x) => ({ ...x })), moves, diff: opt.diff ?? 0.2, fogEvery: opt.fogEvery || 0 };
 }
 
 export const LEVELS = TABLE.map((row, i) => buildLevel(i + 1, row));

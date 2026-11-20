@@ -12,7 +12,11 @@ export class Sound {
     this.sfxOn = true;
     this.musicOn = true;
     this.music = null;
+    this.intensity = 0;
   }
+
+  /** Intensité de la musique (0 à 3) : elle monte avec le combo. */
+  setIntensity(level) { this.intensity = Math.max(0, Math.min(3, level | 0)); }
 
   /** À appeler lors d'un geste de l'utilisateur (règle des navigateurs). */
   unlock() {
@@ -122,7 +126,7 @@ export class Sound {
     this.tone({ f: f * 5.4, t, dur: dur * 0.18, gain: gain * 0.1, type: 'sine', rev: 0.2, dest });
   }
 
-  whoosh({ t = 0, dur = 0.3, from = 400, to = 3000, gain = 0.12, type = 'bandpass' }) {
+  whoosh({ t = 0, dur = 0.3, from = 400, to = 3000, gain = 0.12, type = 'bandpass', dest = null }) {
     const c = this.ctx, start = this.now + t;
     const src = c.createBufferSource();
     src.buffer = this.noiseBuf;
@@ -137,7 +141,7 @@ export class Sound {
     g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
     src.connect(fl);
     fl.connect(g);
-    g.connect(this.sfx);
+    g.connect(dest || this.sfx);
     src.start(start);
     src.stop(start + dur + 0.05);
   }
@@ -167,6 +171,16 @@ export class Sound {
     if (white) for (let i = 0; i < 10; i++) this.tone({ f: midi(penta(84, i + step)), t: 0.15 + i * 0.035, dur: 0.4, gain: 0.05, type: 'sine', rev: 0.5 });
     if (area >= 9) this.tone({ f: 55, f2: 40, dur: 0.6, gain: 0.22, type: 'sine', rev: 0.1 });
   }
+
+  timeTick(urgent) { if (this.ready) this.tone({ f: urgent ? 1320 : 990, dur: 0.06, gain: urgent ? 0.07 : 0.045, type: 'square', q: 3000, rev: 0 }); }
+  timeBonus() { if (this.ready) { this.tone({ f: 880, f2: 1760, dur: 0.18, gain: 0.05, type: 'triangle', rev: 0.2 }); } }
+  timeUp() {
+    if (!this.ready) return;
+    this.tone({ f: 660, dur: 0.25, gain: 0.1, type: 'square', q: 2500, rev: 0.2 });
+    this.tone({ f: 440, t: 0.22, dur: 0.5, gain: 0.1, type: 'square', q: 2000, rev: 0.3 });
+  }
+  relief() { if (this.ready) this.whoosh({ dur: 0.8, from: 2500, to: 300, gain: 0.06, type: 'lowpass' }); }
+  fogSpread() { if (this.ready) this.whoosh({ dur: 0.6, from: 200, to: 800, gain: 0.03, type: 'bandpass' }); }
 
   starSpawn() { if (this.ready) { this.bell(midi(96), 0, 0.05, 0.6); this.bell(midi(100), 0.08, 0.04, 0.6); } }
   starCaught() { if (this.ready) [84, 88, 91, 96].forEach((m, i) => this.bell(midi(m), i * 0.07, 0.09, 1)); }
@@ -243,6 +257,12 @@ export class Sound {
           this.tone({ f: midi(chord[0] - 24), t, dur: beat * 8, gain: 0.05, attack: 0.3, type: 'sine', rev: 0.1, dest: this.mus });
         }
         if (step % 16 === 8) this.tone({ f: midi(chord[0] - 24), t, dur: beat * 8, gain: 0.04, attack: 0.3, type: 'sine', rev: 0.1, dest: this.mus });
+        // Combo : pulsation et notes supplémentaires.
+        if (this.intensity >= 1) {
+          this.whoosh({ t, dur: 0.05, from: 7000, to: 9000, gain: 0.02 * this.intensity, type: 'highpass', dest: this.mus });
+          if (this.intensity >= 2 && step % 2 === 0) this.tone({ f: midi(chord[0] - 24), t, dur: 0.18, gain: 0.05, type: 'sine', rev: 0, dest: this.mus });
+          if (this.intensity >= 3 && step % 2 === 1) this.bell(midi(chord[step % 3] + 24), t, 0.025, 0.5, this.mus);
+        }
         if (Math.random() < (step % 2 ? 0.18 : 0.38)) {
           const tones = chord.map((m) => m + 12).concat([chord[0] + 24, chord[2] + 12 + 2]);
           const m = tones[Math.floor(Math.random() * tones.length)];

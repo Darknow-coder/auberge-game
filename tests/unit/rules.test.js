@@ -248,13 +248,26 @@ test('sauvegarde : un état JSON rechargé rejoue à l\'identique', () => {
   assert.deepEqual(a, b);
 });
 
-test('initiation : la première pièce ferme un enclos de lumière blanche', () => {
+test('initiation : trois étapes guidées, puis la partie continue', () => {
   const s = newGame({ mode: 'classic', tutorial: true, seed: 3 });
+  assert.equal(s.tutorial, 0);
   assert.equal(B.enclosures(s.board.c).length, 0);
-  const { ti, x, y } = TUTORIAL.target;
-  const r = place(s, ti, x, y);
-  const enc = r.events.find((e) => e.type === 'enclose');
-  assert.ok(enc && enc.regions[0].white && enc.regions[0].area === 4);
+  // Une pose ratée fait recommencer l'étape.
+  const miss = place(s, 0, 0, 8);
+  assert.ok(miss.events.some((e) => e.type === 'tutorialRetry'));
+  assert.equal(s.tutorial, 0);
+  for (let step = 0; step < TUTORIAL.length; step++) {
+    assert.equal(B.enclosures(s.board.c).length, 0, `étape ${step} : rien n'est fermé au départ`);
+    const { ti, x, y } = TUTORIAL[step].target;
+    const r = place(s, ti, x, y);
+    const enc = r.events.find((e) => e.type === 'enclose');
+    assert.ok(enc, `étape ${step} : l'enclos se ferme`);
+    if (step === 0) assert.ok(enc.regions[0].white);
+    if (step === 1) assert.equal(enc.regions[0].area, 9);
+    if (step === 2) assert.equal(enc.regions[0].area, 4);
+  }
+  assert.equal(s.tutorial, null);
+  assert.equal(s.tray.filter(Boolean).length, 3, 'la partie normale commence');
 });
 
 test('générateur : déterministe et lots jouables en début de partie', () => {

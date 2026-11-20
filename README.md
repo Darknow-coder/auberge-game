@@ -30,17 +30,21 @@ Ouvrez ensuite <http://localhost:8080>. N'importe quel serveur statique convient
 - **Lumière blanche** : une enceinte qui contient du rouge, du vert et du bleu double les points (deux couleurs : ×1,5).
 - **Aperçu** : pendant qu'on tient une pièce, la zone qui va s'illuminer brille, l'enceinte est surlignée et les points s'affichent.
 - **Combo** : fermez un enclos au moins toutes les 2 pièces pour faire monter le multiplicateur (jusqu'à ×5). Plusieurs enclos d'un coup : bonus supplémentaire.
-- **Étoiles filantes** (Classique) : elles apparaissent sur une case vide et s'éteignent après 9 pièces. Encerclées à temps, elles doublent les points de l'enclos.
+- **Étoiles filantes** (Classique, Blitz, Zen) : elles apparaissent sur une case vide et s'éteignent après 9 pièces. Encerclées à temps, elles doublent les points de l'enclos.
 - **Jauge d'éclat** : les enclos la remplissent. Pleine, elle donne un pouvoir : **Tourner** une pièce, **Bombe** 3 × 3, **Relancer** les pièces.
 - La partie s'arrête quand plus aucune pièce ne rentre (et qu'aucun pouvoir ne peut vous sauver).
 
 ## Contenu
 
 - **Classique** : sans fin, pour battre son record, avec les étoiles filantes. Le générateur de pièces est bienveillant au début (lots toujours jouables, souvent de quoi fermer un enclos), puis la pression monte.
-- **Aventure** : 60 niveaux en 6 mondes — premiers enclos, gemmes à encercler, pierres qui servent de murs puis se brisent, lumière blanche, grands bassins à refermer — avec un nombre de pièces limité et 1 à 3 étoiles.
+- **Blitz** : 90 secondes chrono. Chaque enclos rajoute du temps (davantage pour les grandes zones, la lumière blanche et les étoiles), mais ces bonus s'amenuisent : une partie dure environ 2 min 30, les plus rapides marquent plus.
+- **Zen** : jamais de fin de partie. Si plus rien ne rentre, de nouvelles pièces arrivent ou la zone la plus encombrée se dégage. On termine la séance quand on veut.
+- **Aventure** : 80 niveaux en 8 mondes — premiers enclos, gemmes à encercler, pierres qui servent de murs puis se brisent, lumière blanche, grands bassins, **brume** qui se propage et qu'il faut encercler pour la dissiper, **cristaux** numérotés qui exigent un enclos assez grand — avec un nombre de pièces limité et 1 à 3 étoiles.
 - **Défi du jour** : 30 pièces, les mêmes pour tout le monde ce jour-là, médailles bronze / argent / or, série de jours consécutifs, calendrier et résultat à partager.
-- **Progression** : niveaux d'expérience, 32 trophées, 6 thèmes visuels à débloquer (Nuit, Aurore, Océan, Jardin, Néon, Or), statistiques détaillées.
-- **Confort** : initiation en un geste, conseils contextuels affichés une seule fois, aide automatique pour les débutants qui hésitent, symboles sur les couleurs (daltonisme), animations réduites, vibrations, musique et sons réglables, reprise automatique de la partie en cours, disposition paysage.
+- **Missions du jour** : trois missions par jour (les mêmes pour tous), de difficulté croissante, récompensées en expérience, avec un bonus quand les trois sont faites.
+- **Progression** : niveaux d'expérience, 40 trophées, 6 thèmes visuels à débloquer (Nuit, Aurore, Océan, Jardin, Néon, Or), statistiques détaillées.
+- **Félicitations en anglais** (choix de style, quelle que soit la langue) : NICE!, GREAT!, AWESOME!, AMAZING!, INCREDIBLE!, LEGENDARY!, WHITE LIGHT!, DOUBLE!, COMBO ×5 ON FIRE!, CLEAN SWEEP!, NEW RECORD!…
+- **Confort** : initiation guidée en 3 étapes (que l'on peut passer), conseils contextuels affichés une seule fois, aide automatique pour les débutants qui hésitent, symboles sur les couleurs (daltonisme), animations réduites, vibrations, musique qui s'intensifie pendant les combos, reprise automatique de la partie en cours, disposition paysage.
 
 ## Tests et équilibrage
 
@@ -48,7 +52,7 @@ Ouvrez ensuite <http://localhost:8080>. N'importe quel serveur statique convient
 npm test                         # règles, contenu, profil, traductions (Node, sans navigateur)
 npm run test:e2e                 # bout en bout Playwright : ordinateur, téléphone tactile, paysage
 npm run sim -- classic 40        # 40 parties classiques jouées par l'IA
-npm run sim -- levels 12         # taux de victoire de chaque niveau d'Aventure
+npm run sim -- levels 12         # taux de victoire de chaque niveau d'Aventure (1 à 80)
 npm run sim -- daily 30          # médailles des 30 prochains défis du jour
 ```
 
@@ -57,9 +61,9 @@ Un joueur automatique (`src/game/bot.js`) sert à l'équilibrage : chaque niveau
 ## Architecture
 
 ```
-src/core     générateur aléatoire déterministe, traductions FR/EN
+src/core     générateur aléatoire déterministe, traductions FR/EN, félicitations (anglais)
 src/game     règles sans DOM : pièces, grille et enclos, générateur, moteur, niveaux, défi du jour, IA
-src/meta     profil, expérience, trophées, thèmes
+src/meta     profil, expérience, trophées, missions du jour, thèmes
 src/render   rendu Canvas 2D : lanternes de lumière mises en cache, lumière des enclos, effets
 src/ui       écran de jeu (saisie souris/tactile/clavier), menus, icônes SVG
 src/audio    sons et musique générative (WebAudio)

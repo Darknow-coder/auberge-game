@@ -6,6 +6,69 @@ const easeOutBack = (t) => { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1,
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 export const RAINBOW = ['#ff4d6d', '#ffa62b', '#ffe14d', '#27d07d', '#3dc4ff', '#7b6bff', '#d45cff'];
 
+const HYPE_FILLS = {
+  gold: ['#fffbe0', '#ffd84a', '#ff9b1f'],
+  fire: ['#fff3c4', '#ff9d2e', '#ff3d3d'],
+  ice: ['#f2fdff', '#7fe9ff', '#3d8bff'],
+  white: ['#ffffff', '#f4f0ff', '#c9b8ff'],
+};
+
+/** Bannière de félicitation (voir Fx.hype). */
+function drawHype(ctx, o) {
+  const k = o.t / o.dur;
+  const pop = o.t < 0.35 ? easeOutBack(Math.min(1, o.t / 0.35)) * 1.08 : 1.08 - 0.08 * Math.min(1, (o.t - 0.35) / 0.25);
+  const alpha = k > 0.72 ? 1 - (k - 0.72) / 0.28 : 1;
+  const tilt = o.tilt * Math.max(0, 1 - o.t / 0.3);
+  const y = o.y - o.dy * easeOutCubic(k);
+  ctx.save();
+  ctx.translate(o.x, y);
+  ctx.rotate(tilt);
+  ctx.scale(pop, pop);
+  ctx.globalAlpha = Math.max(0, alpha);
+  ctx.font = `700 ${o.size}px Fredoka, system-ui, sans-serif`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = `${Math.round(o.size * 0.04)}px`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  const tw = ctx.measureText(o.text).width;
+  const hgt = o.size;
+  // Halo et contour épais.
+  ctx.shadowColor = o.style === 'rainbow' ? 'rgba(255,120,255,0.7)' : o.style === 'ice' ? 'rgba(80,200,255,0.75)' : 'rgba(255,170,40,0.75)';
+  ctx.shadowBlur = o.size * 0.5;
+  ctx.lineWidth = Math.max(4, o.size * 0.2);
+  ctx.strokeStyle = 'rgba(25, 8, 45, 0.92)';
+  ctx.strokeText(o.text, 0, 0);
+  ctx.shadowBlur = 0;
+  // Remplissage en dégradé.
+  let fill;
+  if (o.style === 'rainbow') {
+    fill = ctx.createLinearGradient(-tw / 2, 0, tw / 2, 0);
+    const shift = (o.t * 0.7) % 1;
+    RAINBOW.forEach((c, i) => fill.addColorStop(((i / (RAINBOW.length - 1)) + shift) % 1, c));
+  } else {
+    const [a, b, c] = HYPE_FILLS[o.style] || HYPE_FILLS.gold;
+    fill = ctx.createLinearGradient(0, -hgt / 2, 0, hgt / 2);
+    fill.addColorStop(0, a);
+    fill.addColorStop(0.5, b);
+    fill.addColorStop(1, c);
+  }
+  ctx.fillStyle = fill;
+  ctx.fillText(o.text, 0, 0);
+  // Reflet qui balaie le texte de gauche à droite.
+  const sweep = Math.min(1, o.t / 0.6);
+  if (sweep < 1) {
+    const sx = -tw / 2 - hgt + (tw + 2 * hgt) * sweep;
+    const shine = ctx.createLinearGradient(sx - hgt * 0.6, 0, sx + hgt * 0.6, 0);
+    shine.addColorStop(0, 'rgba(255,255,255,0)');
+    shine.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+    shine.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = shine;
+    ctx.fillText(o.text, 0, 0);
+  }
+  ctx.restore();
+}
+
 export class Fx {
   constructor() {
     this.parts = [];
@@ -84,6 +147,23 @@ export class Fx {
   /** opts : size, color, rainbow, dur, dy (montée), stroke */
   text(text, x, y, opts = {}) {
     this.texts.push({ text, x, y, t: -(opts.delay || 0), size: opts.size || 28, color: opts.color || '#fff', rainbow: !!opts.rainbow, dur: opts.dur || 1.1, dy: opts.dy ?? 40, weight: opts.weight || 700, tag: opts.tag || null });
+  }
+
+  /**
+   * Bannière de félicitation : apparition avec rebond et légère inclinaison, dégradé,
+   * halo et reflet qui balaie le texte. style : 'gold' | 'rainbow' | 'fire' | 'ice' | 'white'.
+   */
+  hype(text, x, y, opts = {}) {
+    this.texts.push({
+      text, x, y, t: -(opts.delay || 0), size: opts.size || 34, dur: opts.dur || 1.5, dy: opts.dy ?? 26, weight: 700,
+      tag: opts.tag || 'praise', hype: true, style: opts.style || 'gold', tilt: opts.tilt ?? (Math.random() < 0.5 ? -0.12 : 0.12),
+    });
+  }
+
+  /** Rayons de lumière tournants (très grands enclos). */
+  rays(x, y, color, radius, dur = 1.3) {
+    if (this.reduced) return;
+    this.rings.push({ x, y, r0: 0, r1: radius, color, t: 0, dur, width: 0, rays: true, spin: Math.random() * Math.PI });
   }
 
   /** Fait disparaître rapidement les textes d'une catégorie (pour qu'ils ne s'empilent pas). */
@@ -174,6 +254,32 @@ export class Fx {
   drawTopLayer(ctx, w, h) {
     ctx.save();
     for (const r of this.rings) {
+      if (r.rays) {
+        const k = r.t / r.dur;
+        const a = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.translate(r.x, r.y);
+        ctx.rotate(r.spin + r.t * 0.8);
+        const len = r.r1 * (0.6 + 0.4 * easeOutCubic(Math.min(1, k * 2)));
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, len);
+        g.addColorStop(0, `rgba(255,255,255,${0.55 * a})`);
+        g.addColorStop(0.35, r.color);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.globalAlpha = Math.max(0, a) * 0.75;
+        for (let i = 0; i < 12; i++) {
+          ctx.rotate((Math.PI * 2) / 12);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(len, -len * 0.09);
+          ctx.lineTo(len, len * 0.09);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+        continue;
+      }
       const k = easeOutCubic(r.t / r.dur);
       ctx.globalAlpha = 1 - r.t / r.dur;
       ctx.strokeStyle = r.color;
@@ -226,6 +332,7 @@ export class Fx {
     }
     for (const o of this.texts) {
       if (o.t < 0) continue;
+      if (o.hype) { drawHype(ctx, o); continue; }
       const k = o.t / o.dur;
       const pop = o.t < 0.3 ? easeOutBack(Math.min(1, o.t / 0.3)) : 1;
       const alpha = k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;

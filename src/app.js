@@ -1,19 +1,19 @@
 // Application : navigation entre écrans, sessions de jeu, sauvegarde, fenêtres modales.
 import { h, $, tweenNumber, vibrate, prefs } from './ui/dom.js';
 import { icon } from './ui/icons.js';
-import { t, fmt, setLang, detectLang, getLang } from './core/i18n.js';
-import { newGame, goalProgress, starsFor } from './game/engine.js';
+import { t, tn, fmt, setLang, detectLang, getLang } from './core/i18n.js';
+import { HYPE } from './core/hype.js';
+import { newGame, goalState, starsFor, finish } from './game/engine.js';
 import { getLevel, LEVELS, worldOf } from './game/levels.js';
 import { dailySpec, dailyMedals, medalFor, dateKey } from './game/daily.js';
-import { loadProfile, saveProfile, saveGame, loadGame, clearGame, recordGame, levelInfo, currentStreak, resetProfile, levelUnlocked } from './meta/profile.js';
+import { loadProfile, saveProfile, saveGame, loadGame, clearGame, recordGame, levelInfo, currentStreak, resetProfile, levelUnlocked, ensureMissions } from './meta/profile.js';
+import { missionIcon } from './meta/missions.js';
 import { THEMES, themeById, applyThemeCss } from './meta/themes.js';
 import { clearSpriteCache } from './render/blocks.js';
 import { GameView } from './render/renderer.js';
 import { Sound } from './audio/audio.js';
 import { GameScreen, GOAL_ICON } from './ui/game.js';
 import { SCREENS } from './ui/menus.js';
-
-
 
 export class App {
   constructor() {
@@ -101,13 +101,21 @@ export class App {
   }
 
   // ------------------------------------------------------------------ sessions
-  slot(s) { return s.mode === 'adventure' ? 'adventure' : s.mode === 'daily' ? 'daily' : 'classic'; }
+  slot(s) { return ['adventure', 'daily', 'blitz', 'zen'].includes(s.mode) ? s.mode : 'classic'; }
   saveSession(s) { saveGame(this.slot(s), s); }
   clearSession(s) { clearGame(this.slot(s)); }
 
   startClassic({ fresh = false } = {}) {
     const saved = !fresh && loadGame('classic');
     const s = saved || newGame({ mode: 'classic', best: this.profile.best.classic, tutorial: !this.profile.tutorialDone });
+    if (!saved) this.saveSession(s);
+    this.play(s);
+  }
+
+  /** Blitz (contre la montre) et Zen (sans fin) : reprise de la partie en cours s'il y en a une. */
+  startArcade(mode, { fresh = false } = {}) {
+    const saved = !fresh && loadGame(mode);
+    const s = saved || newGame({ mode, best: this.profile.best[mode] || 0 });
     if (!saved) this.saveSession(s);
     this.play(s);
   }
@@ -152,6 +160,7 @@ export class App {
     this.clearSession(s);
     if (s.mode === 'classic') this.startClassic({ fresh: true });
     else if (s.mode === 'adventure') this.startLevel(s.level, { intro: false });
+    else if (s.mode === 'blitz' || s.mode === 'zen') this.startArcade(s.mode, { fresh: true });
     else this.startDaily({ fresh: true });
   }
 
@@ -165,6 +174,7 @@ export class App {
     if (s.mode === 'adventure') this.resultsAdventure(s, report);
     else if (s.mode === 'daily') this.resultsDaily(s, report, medal);
     else this.resultsClassic(s, report);
+    if (report.missions.done.length || report.missions.bonus) setTimeout(() => this.sound.trophy(), 1400);
   }
 
   // ------------------------------------------------------------------ réglages
@@ -279,13 +289,14 @@ export class App {
         h('button.btn.primary.big', { html: `${icon('play')}<span>${t('pause.resume')}</span>`, autofocus: true, onclick: () => this.closeModal() }),
         h('button.btn', { html: `${icon('replay')}<span>${t('pause.restart')}</span>`, onclick: () => { this.closeModal(); this.confirm(t('pause.restartConfirm'), () => this.restart()); } }),
         h('button.btn', { html: `${icon('help')}<span>${t('pause.help')}</span>`, onclick: () => this.help() }),
+        this.game.s.mode === 'zen' ? h('button.btn', { html: `${icon('check')}<span>${t('pause.finishZen')}</span>`, onclick: () => { this.closeModal(); this.game.onFinish(); } }) : null,
         h('button.btn', { html: `${icon('home')}<span>${t('common.home')}</span>`, onclick: () => this.show('home') })),
       h('div.chip-row', toggle('sfx', 'sound', t('settings.sfx')), toggle('music', 'music', t('settings.music')), toggle('vibrate', 'vibrate', t('settings.vibrate'))),
     ], { cls: 'pause' });
   }
 
   help() {
-    const steps = [1, 2, 3, 4, 5, 6].map((i) => h('li', h('span.help-n', { text: i }), h('span', { text: t(`help.${i}`) })));
+    const steps = [1, 2, 3, 4, 5, 6, 7].map((i) => h('li', h('span.help-n', { text: i }), h('span', { text: t(`help.${i}`) })));
     this.modal([
       h('h2.modal-title', { text: t('help.title') }),
       h('ol.help-list', steps),
@@ -294,24 +305,28 @@ export class App {
   }
 
   goalLine(g, s) {
-    const done = s ? Math.min(goalProgress(s, g), g.target) : null;
+    const st = s ? goalState(s, g) : null;
     const target = g.type === 'score' ? fmt(g.target) : g.target;
-    return h(`div.goal-line${s && done >= g.target ? '.ok' : ''}`,
-      h('span.goal-ic', { html: icon(s && done >= g.target ? 'check' : GOAL_ICON[g.type]) }),
-      h('span', { text: t(`goal.${g.type}`, { n: target }) }),
-      s ? h('b', { text: g.type === 'score' ? `${fmt(done)}/${fmt(g.target)}` : `${done}/${g.target}` }) : null);
+    const value = st ? (st.countdown ? String(st.value) : g.type === 'score' ? `${fmt(st.value)}/${fmt(g.target)}` : `${st.value}/${g.target}`) : null;
+    return h(`div.goal-line${st && st.done ? '.ok' : ''}`,
+      h('span.goal-ic', { html: icon(st && st.done ? 'check' : GOAL_ICON[g.type]) }),
+      h('span', { text: g.type === 'score' ? t('goal.score', { n: target }) : tn(`goal.${g.type}`, g.target) }),
+      st ? h('b', { text: value }) : null);
   }
 
   levelIntro(L, go) {
     const w = worldOf(L.n);
     const stones = L.rows.join('').split('').filter((c) => c === '#').length;
     const goals = L.goals.map((g) => ({ ...g, target: g.type === 'stones' ? (g.target ?? stones) : g.target }));
+    const fog = L.rows.join('').split('').filter((c) => c === '~').length;
     const best = this.profile.adv[L.n] || 0;
     this.modal([
       h('div.modal-kicker', { text: t(`world.${w.id}`) }),
       h('h2.modal-title', { text: t('level.title', { n: L.n }) }),
       h('div.stars.small', [1, 2, 3].map((i) => h(`span.star${i <= best ? '.on' : ''}`, { html: icon('starFill') }))),
       h('div.goal-list', goals.map((g) => this.goalLine(g))),
+      fog ? h('p.intro-note', { html: `${icon('cloud')} ${t('level.fogNote')}` }) : null,
+      L.rows.join('').match(/[2-9]/) ? h('p.intro-note', { html: `${icon('crystal')} ${t('level.crystalNote')}` }) : null,
       h('p.muted', { text: t('level.moves', { n: L.moves }) }),
       h('button.btn.primary.big', { html: `${icon('play')}<span>${t('level.play')}</span>`, autofocus: true, onclick: () => { this.closeModal(); go(); } }),
     ], { cls: 'intro' });
@@ -319,7 +334,7 @@ export class App {
 
   // ------------------------------------------------------------------ résultats
   xpBlock(report) {
-    const gained = report.xp + [...report.trophies, ...(report.liveTrophies || [])].reduce((a, x) => a + x.xp, 0);
+    const gained = report.xp + (report.missionXp || 0) + [...report.trophies, ...(report.liveTrophies || [])].reduce((a, x) => a + x.xp, 0);
     const before = levelInfo(this.profile.xp - gained);
     const after = levelInfo(this.profile.xp);
     const fill = h('div.xp-fill', { style: { width: `${before.pct * 100}%` } });
@@ -354,7 +369,17 @@ export class App {
 
   statRow(s) {
     const cell = (v, l) => h('div.stat', h('b', { text: v }), h('small', { text: l }));
-    return h('div.stat-row', cell(fmt(s.stats.areas), t('result.areas')), cell(s.stats.maxArea, t('result.biggest')), cell(s.stats.whites, t('result.whites')));
+    const third = s.mode === 'blitz' ? cell(`+${s.stats.timeGained} s`, t('result.timeGained')) : cell(s.stats.whites, t('result.whites'));
+    return h('div.stat-row', cell(fmt(s.stats.areas), t('result.areas')), cell(s.stats.maxArea, t('result.biggest')), third);
+  }
+
+  /** Missions accomplies pendant cette partie. */
+  missionChips(report) {
+    const ms = report.missions;
+    if (!ms || (!ms.done.length && !ms.bonus)) return null;
+    return h('div.mission-done', ms.done.map((m) => h('div.mission-chip', h('span', { html: icon(missionIcon(m.type)) }),
+      h('span', { text: m.type === 'classic' || m.type === 'blitz' ? t(`mission.${m.type}`, { n: fmt(m.target) }) : tn(`mission.${m.type}`, m.target) }), h('b', { text: `+${m.xp} XP` }))),
+    ms.bonus ? h('div.mission-chip.bonus', h('span', { html: icon('gift') }), h('span', { text: t('mission.bonus') }), h('b', { text: `+${ms.bonus} XP` })) : null);
   }
 
   bigScore(score) {
@@ -363,19 +388,25 @@ export class App {
     return el;
   }
 
+  /** Bilan des modes à score : Classique, Blitz, Zen. */
   resultsClassic(s, report) {
     if (report.newBest && report.prevBest > 0) setTimeout(() => this.sound.record(), 400);
+    const mode = s.mode;
+    const title = mode === 'blitz' ? 'result.timeUp' : mode === 'zen' ? 'result.zenDone' : 'result.over';
+    const again = () => (mode === 'classic' ? this.startClassic({ fresh: true }) : this.startArcade(mode, { fresh: true }));
     this.modal([
-      h('h2.modal-title', { text: t('result.over') }),
-      report.newBest ? h('div.ribbon', { text: t('result.newBest') }) : null,
+      mode !== 'classic' ? h('div.modal-kicker', { text: t(`mode.${mode}`) }) : null,
+      h('h2.modal-title', { text: t(title) }),
+      report.newBest ? h('div.ribbon', { text: HYPE.record }) : null,
       this.bigScore(s.score),
-      h('div.best-line', { html: `${icon('crown')} ${t('result.best')} ${fmt(this.profile.best.classic)}` }),
+      h('div.best-line', { html: `${icon('crown')} ${t('result.best')} ${fmt(this.profile.best[mode] || 0)}` }),
       this.statRow(s),
+      this.missionChips(report),
       this.xpBlock(report),
       this.trophyChips(report),
       h('div.btn-row',
         h('button.btn.ghost', { html: `${icon('home')}<span>${t('common.home')}</span>`, onclick: () => this.show('home') }),
-        h('button.btn.primary.big', { html: `${icon('replay')}<span>${t('result.again')}</span>`, autofocus: true, onclick: () => this.startClassic({ fresh: true }) })),
+        h('button.btn.primary.big', { html: `${icon('replay')}<span>${t('result.again')}</span>`, autofocus: true, onclick: again })),
     ], { dismissable: false, cls: 'results' });
   }
 
@@ -391,6 +422,7 @@ export class App {
       h('h2.modal-title', { text: won ? t('result.won', { n: s.level }) : t('result.lost') }),
       won ? h('div.stars.big', starEls) : h('p.muted', { text: t('result.lostHint') }),
       won ? this.bigScore(s.score) : h('div.goal-list', L.goals.map((g, i) => this.goalLine(s.goals[i], s))),
+      this.missionChips(report),
       this.xpBlock(report),
       this.trophyChips(report),
       h('div.btn-row',
@@ -414,6 +446,7 @@ export class App {
       this.bigScore(s.score),
       h('div.medal-row', ['bronze', 'silver', 'gold'].map((k) => h(`div.medal-step.${k}${s.score >= m[k] ? '.ok' : ''}`, h('span.medal-dot.' + k), h('span', { text: fmt(m[k]) })))),
       h('div.streak-line', { html: `${icon('flame')} ${t('daily.streak')} : <b>${t('daily.days', { n: streak })}</b>` }),
+      this.missionChips(report),
       this.xpBlock(report),
       this.trophyChips(report),
       h('div.btn-row',

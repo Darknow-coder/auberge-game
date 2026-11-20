@@ -1,9 +1,9 @@
 // Rendu Canvas 2D de la zone de jeu : grille, pièces, aperçu des enclos, effets.
 // Toutes les coordonnées sont en pixels CSS ; le canvas est mis à l'échelle de l'écran.
-import { blockSprite, roundRect, PAD, rgba, lightColor } from './blocks.js';
+import { blockSprite, glowSprite, roundRect, PAD, rgba, lightColor } from './blocks.js';
 import { Fx, RAINBOW } from './fx.js';
 import { SHAPES } from '../game/pieces.js';
-import { COLS, ROWS, CELLS, STONE, WHITE, GEM, STAR, canPlace, previewPlace } from '../game/board.js';
+import { COLS, ROWS, CELLS, STONE, WHITE, GEM, STAR, FOG, isCrystal, crystalNeed, canPlace, previewPlace } from '../game/board.js';
 import { bombArea, areaPoints, mixMult, multiMult, comboMult, SCORE, STAR_LIFE } from '../game/engine.js';
 
 const easeOutBack = (t) => { const c = 1.6; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
@@ -37,6 +37,7 @@ export class GameView {
     this.gray = null;
     this.hand = null;
     this.time = 0;
+    this.flies = Array.from({ length: 7 }, (_, i) => ({ x: Math.random(), y: Math.random(), vx: (Math.random() - 0.5) * 0.03, vy: (Math.random() - 0.5) * 0.03, ph: i * 1.7 }));
   }
 
   resize() {
@@ -177,6 +178,7 @@ export class GameView {
     ctx.save();
     ctx.translate(sx, sy);
     this.drawBoard();
+    this.drawFlies(dt);
     this.drawPools();
     this.drawCells();
     this.drawPreview();
@@ -230,12 +232,11 @@ export class GameView {
         const [x, y] = this.cellXY(c.x, c.y);
         let color = pool.color;
         if (pool.white) color = RAINBOW[Math.floor((c.x + c.y + this.time * 8) % RAINBOW.length)];
-        const grad = ctx.createRadialGradient(x + b.cell / 2, y + b.cell / 2, 0, x + b.cell / 2, y + b.cell / 2, b.cell * 0.75);
-        grad.addColorStop(0, rgba(pool.white ? '#ffffff' : color, 0.95 * a));
-        grad.addColorStop(0.6, rgba(color, 0.55 * a));
-        grad.addColorStop(1, rgba(color, 0));
-        ctx.fillStyle = grad;
-        ctx.fillRect(x - b.cell * 0.25, y - b.cell * 0.25, b.cell * 1.5, b.cell * 1.5);
+        const g = glowSprite(color, b.cell * 1.6 * this.dpr);
+        ctx.globalAlpha = a;
+        ctx.drawImage(g, x - b.cell * 0.3, y - b.cell * 0.3, b.cell * 1.6, b.cell * 1.6);
+        if (pool.white) { ctx.globalAlpha = a * 0.7; ctx.drawImage(glowSprite('#ffffff', b.cell * this.dpr), x, y, b.cell, b.cell); }
+        ctx.globalAlpha = 1;
       }
     }
     ctx.restore();
@@ -253,6 +254,12 @@ export class GameView {
         if (o === GEM) {
           const bob = Math.sin(now * 2.4 + i) * b.cell * 0.04;
           this.drawBlock('gem', cx, cy + bob, b.cell, 0.9);
+        } else if (o === FOG) {
+          this.drawFog(cx, cy, b.cell, i);
+        } else if (isCrystal(o)) {
+          const bob = Math.sin(now * 2 + i) * b.cell * 0.03;
+          this.drawBlock('crystal', cx, cy + bob, b.cell, 0.95);
+          this.drawBadge(String(crystalNeed(o)), cx + b.cell * 0.78, cy + b.cell * 0.78, b.cell);
         } else if (o === STAR && s.star && s.star.i === i) {
           const life = s.star.life / STAR_LIFE;
           const pulse = 1 + Math.sin(now * (life < 0.35 ? 14 : 5)) * 0.06;
@@ -276,8 +283,9 @@ export class GameView {
       const pt = this.pop.get(i);
       if (pt != null) {
         const k = (now - pt) / 0.22;
+        if (k < 0) continue; // pas encore apparu (grilles de l'initiation)
         if (k >= 1) this.pop.delete(i);
-        else scale = k < 0 ? 1 : 1 + 0.18 * Math.sin(k * Math.PI) * (1 - k);
+        else scale = 1 + 0.18 * Math.sin(k * Math.PI) * (1 - k);
       }
       let kind = v;
       if (this.gray && now - this.gray > (ROWS - 1 - y) * 0.07 + x * 0.012) kind = v === STONE ? STONE : 'gray';
@@ -306,6 +314,19 @@ export class GameView {
             ctx.fill();
           }
           ctx.restore();
+        }
+        // Cristaux : vert s'ils seront récoltés, rouge si l'enclos est trop petit.
+        for (const r of regions) {
+          for (const [list, color] of [[r.crystalCells || [], 'rgba(120,255,170,0.95)'], [r.crystalsLeft || [], 'rgba(255,90,90,0.95)']]) {
+            for (const k of list) {
+              const [qx, qy] = this.cellCenter(k);
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(qx, qy, b.cell * (0.42 + 0.04 * pulse), 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
         }
         // Blocs qui vont disparaître : liseré blanc pulsant.
         if (ring.size) {
@@ -468,6 +489,80 @@ export class GameView {
     ctx.arc(x + 8, y + 10, 22 + Math.sin(this.time * 8) * 3, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /** Brume : volutes violettes qui ondulent lentement. */
+  drawFog(cx, cy, cell, i) {
+    const ctx = this.ctx, t = this.time;
+    const g = glowSprite('#9b86d6', cell * 1.2 * this.dpr);
+    for (let k = 0; k < 3; k++) {
+      const a = t * (0.5 + k * 0.17) + i * 1.3 + k * 2.1;
+      const ox = Math.cos(a) * cell * 0.16, oy = Math.sin(a * 1.3) * cell * 0.12;
+      const sz = cell * (0.95 + 0.12 * Math.sin(a * 0.7));
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(g, cx + cell / 2 + ox - sz / 2, cy + cell / 2 + oy - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    const drift = Math.sin(t * 1.2 + i) * cell * 0.05;
+    this.drawBlock('fog', cx + drift, cy, cell, 0.95);
+  }
+
+  /** Pastille chiffrée (taille d'enclos exigée par un cristal). */
+  drawBadge(text, x, y, cell) {
+    const ctx = this.ctx, r = cell * 0.2;
+    ctx.fillStyle = '#2a1460';
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = `700 ${Math.round(r * 1.35)}px Fredoka, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 1);
+  }
+
+  /** Lucioles d'ambiance qui flottent au-dessus de la grille. */
+  drawFlies(dt) {
+    if (this.fx.reduced) return;
+    const ctx = this.ctx, b = this.board;
+    const g = glowSprite('#ffe9a8', 16 * this.dpr);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of this.flies) {
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      if (f.x < 0 || f.x > 1) f.vx *= -1;
+      if (f.y < 0 || f.y > 1) f.vy *= -1;
+      f.x = Math.max(0, Math.min(1, f.x));
+      f.y = Math.max(0, Math.min(1, f.y));
+      ctx.globalAlpha = 0.25 + 0.25 * Math.sin(this.time * 1.6 + f.ph);
+      ctx.drawImage(g, b.x + f.x * b.w - 8, b.y + f.y * b.h - 8, 16, 16);
+    }
+    ctx.restore();
+  }
+
+  /** Fait apparaître les blocs de la grille un par un (nouvelle étape de l'initiation). */
+  revealBoard(delay = 0.6) {
+    for (let i = 0; i < CELLS; i++) {
+      if (!this.s.board.c[i]) continue;
+      const x = i % COLS, y = (i / COLS) | 0;
+      this.pop.set(i, this.time + delay + (x + y) * 0.03);
+    }
+  }
+
+  /** Zen et Blitz : la zone la plus encombrée se dissout doucement. */
+  relieved(ev) {
+    const b = this.board, fx = this.fx;
+    for (const c of ev.cleared) {
+      const x = c.i % COLS, y = (c.i / COLS) | 0;
+      const [cx, cy] = this.cellXY(x, y);
+      const sp = this.sprite(c.c, b.cell);
+      fx.die(cx, cy, b.cell, sp.img, sp.pad * sp.k, Math.hypot(x - ev.x, y - ev.y) * 0.06);
+      fx.rise(cx + b.cell / 2, cy + b.cell / 2, ['#bfe9ff', '#ffffff'], 2, b.cell);
+    }
   }
 
   // ------------------------------------------------------------------ effets

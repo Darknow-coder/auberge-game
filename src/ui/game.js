@@ -5,14 +5,15 @@ import { icon } from './icons.js';
 import { t, fmt, getLang } from '../core/i18n.js';
 import { SHAPES } from '../game/pieces.js';
 import { COLS, ROWS } from '../game/board.js';
-import { place, usePower, giveUp, trayFits, goalProgress, gaugeMax, comboMult, COMBO_GRACE, TUTORIAL } from '../game/engine.js';
+import { place, usePower, giveUp, trayFits, goalState, gaugeMax, comboMult, COMBO_GRACE, TUTORIAL, tick, finish, skipTutorial, BLITZ } from '../game/engine.js';
 import { bestMove } from '../game/bot.js';
+import { HYPE, areaHype, comboTier, multiHype } from '../core/hype.js';
 import { unlockAchievements } from '../meta/achievements.js';
 import { clearSpriteCache } from '../render/blocks.js';
 import { BOARD_RATIO } from '../render/renderer.js';
 
 const POWERS = ['rotate', 'bomb', 'reroll'];
-export const GOAL_ICON = { score: 'star', areas: 'ring', light: 'sun', whites: 'prism', big: 'expand', gems: 'gem', stones: 'stone' };
+export const GOAL_ICON = { score: 'star', areas: 'ring', light: 'sun', whites: 'prism', big: 'expand', gems: 'gem', stones: 'stone', fog: 'cloud', crystals: 'crystal' };
 
 export class GameScreen {
   constructor(app) {
@@ -47,6 +48,7 @@ export class GameScreen {
         h('div#board-slot'),
         h('div#tray-slot')),
       h('div.banner#banner', { role: 'status', 'aria-live': 'polite' }),
+      h('button.btn.small.ghost.skip-tuto#skip-tuto', { text: t('tuto.skip'), onclick: () => this.onSkipTutorial() }),
       h('div.powers#powers',
         h('div.gauge', { title: t('game.gauge') }, h('span.gauge-ic', { html: icon('sparkle') }), h('div.gauge-bar', h('div.gauge-fill#gauge-fill'))),
         h('div.power-row', POWERS.map(pw))),
@@ -114,10 +116,10 @@ export class GameScreen {
     v.fits = trayFits(s);
     this.refreshHud(true);
     if (s.status === 'stuck') this.showStuck();
-    if (s.tutorial && s.moves === 0) {
-      v.hand = { ...TUTORIAL.target, t0: v.time };
-      this.banner(t('tuto.drag'), 0);
-    }
+    this.lastSecond = null;
+    this.el.classList.toggle('in-tutorial', s.tutorial != null);
+    if (s.tutorial != null) this.showTutorialStep();
+    this.app.sound.setIntensity(0);
     this.loop();
   }
 
@@ -138,21 +140,71 @@ export class GameScreen {
     cancelAnimationFrame(this.raf);
     this.last = performance.now();
     this.idleSince = performance.now();
-    const tick = (now) => {
+    const frame = (now) => {
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
       this.idleHint(now);
+      if (this.s && this.s.mode === 'blitz' && this.playing) this.clock(dt);
       this.view.frame(dt);
-      this.raf = requestAnimationFrame(tick);
+      this.raf = requestAnimationFrame(frame);
     };
-    this.raf = requestAnimationFrame(tick);
+    this.raf = requestAnimationFrame(frame);
+  }
+
+  /** Blitz : le chrono tourne, avec tic-tac dans les 10 dernières secondes. */
+  clock(dt) {
+    const ev = tick(this.s, dt);
+    const sec = Math.ceil(this.s.time);
+    if (sec !== this.lastSecond) {
+      this.lastSecond = sec;
+      this.refreshTimer();
+      if (sec <= 10 && sec > 0) { this.app.sound.timeTick(sec <= 5); vibrate(sec <= 5 ? 12 : 0); }
+    }
+    if (ev.length) this.handle(ev);
+  }
+
+  refreshTimer() {
+    const s = this.s, el = $('#hud-right', this.el);
+    if (s.mode !== 'blitz') return;
+    const sec = Math.ceil(s.time);
+    const pct = Math.min(1, s.time / BLITZ.start);
+    let badge = $('.timer', el);
+    if (!badge) {
+      el.innerHTML = `<div class="timer" title="${t('game.time')}"><svg viewBox="0 0 36 36"><circle class="timer-bg" cx="18" cy="18" r="15.5"/><circle class="timer-fg" cx="18" cy="18" r="15.5" pathLength="100"/></svg><b></b></div>`;
+      badge = $('.timer', el);
+    }
+    $('b', badge).textContent = sec;
+    $('.timer-fg', badge).style.strokeDashoffset = String(100 - pct * 100);
+    badge.classList.toggle('low', sec <= 10);
+  }
+
+  /** Initiation : main animée vers la cible de l'étape et consigne. */
+  showTutorialStep() {
+    const s = this.s, v = this.view;
+    if (s.tutorial == null) return;
+    const step = TUTORIAL[s.tutorial];
+    v.hand = { ...step.target, t0: v.time };
+    this.banner(`${s.tutorial + 1}/${TUTORIAL.length} · ${t(step.text)}`, 0, 'tip');
+  }
+
+  onSkipTutorial() {
+    if (!this.s || this.s.tutorial == null || this.ending) return;
+    this.view.hand = null;
+    this.handle(skipTutorial(this.s).events);
+  }
+
+  /** Zen : terminer la séance (depuis la pause). */
+  onFinish() {
+    if (!this.s || this.ending) return;
+    const r = finish(this.s);
+    if (r.ok) this.handle(r.events);
   }
 
   /** Pendant les premières parties, montre un bon coup si le joueur hésite longtemps. */
   idleHint(now) {
     const v = this.view;
     if (v.drag || v.mode || !this.playing || this.s.status !== 'play') { this.idleSince = now; return; }
-    if (v.hand || this.app.profile.stats.games >= 3 || now - this.idleSince < 15000) return;
+    if (v.hand || this.s.tutorial != null || this.app.profile.stats.games >= 3 || now - this.idleSince < 15000) return;
     const m = bestMove(this.s);
     if (m) v.hand = { ti: m.ti, x: m.x, y: m.y, t0: v.time };
   }
@@ -173,11 +225,12 @@ export class GameScreen {
       scoreEl.classList.add('bump');
     }
     const label = $('#hud-label', el), sub = $('#hud-sub', el), right = $('#hud-right', el);
-    if (s.mode === 'classic') {
-      label.textContent = '';
-      const best = Math.max(this.app.profile.best.classic, s.score);
+    if (s.mode === 'classic' || s.mode === 'zen' || s.mode === 'blitz') {
+      label.textContent = s.mode === 'classic' ? '' : t(`mode.${s.mode}`);
+      const best = Math.max(this.app.profile.best[s.mode] || 0, s.score);
       sub.innerHTML = `${icon('crown')} ${fmt(best)}`;
-      right.innerHTML = '';
+      if (s.mode === 'blitz') this.refreshTimer();
+      else right.innerHTML = '';
     } else if (s.mode === 'adventure') {
       label.textContent = t('game.level', { n: s.level });
       sub.textContent = '';
@@ -193,10 +246,9 @@ export class GameScreen {
     const goals = $('#goals', el);
     if (s.goals) {
       goals.innerHTML = s.goals.map((g) => {
-        const done = Math.min(goalProgress(s, g), g.target);
-        const ok = done >= g.target;
-        const txt = g.type === 'score' ? `${fmt(done)}/${fmt(g.target)}` : `${done}/${g.target}`;
-        return `<div class="goal ${ok ? 'ok' : ''}" data-goal="${g.type}">${icon(ok ? 'check' : GOAL_ICON[g.type])}<span>${txt}</span></div>`;
+        const st = goalState(s, g);
+        const txt = st.countdown ? String(st.value) : g.type === 'score' ? `${fmt(st.value)}/${fmt(g.target)}` : `${st.value}/${g.target}`;
+        return `<div class="goal ${st.done ? 'ok' : ''}" data-goal="${g.type}">${icon(st.done ? 'check' : GOAL_ICON[g.type])}<span>${txt}</span></div>`;
       }).join('');
     } else goals.innerHTML = '';
     // Combo
@@ -251,7 +303,7 @@ export class GameScreen {
   /** Conseil affiché une seule fois par profil. */
   tip(key, delay = 0) {
     const p = this.app.profile;
-    if (p.tips[key]) return;
+    if (p.tips[key] || (this.s && this.s.tutorial != null)) return;
     p.tips[key] = 1;
     this.app.saveProfile();
     setTimeout(() => this.banner(t(`tip.${key}`), 4200, 'tip'), delay);
@@ -420,9 +472,8 @@ export class GameScreen {
     v.drag = null;
     const r = place(this.s, ti, x, y);
     if (!r.ok) { this.app.sound.invalid(); return; }
-    if (v.hand) { if (this.s.tutorial && this.s.moves === 1) this.banner(null); v.hand = null; }
+    v.hand = null;
     this.idleSince = performance.now();
-    if (this.s.tutorial && !this.app.profile.tutorialDone) { this.app.profile.tutorialDone = true; this.app.saveProfile(); }
     this.handle(r.events);
   }
 
@@ -485,34 +536,97 @@ export class GameScreen {
           const star = e.regions.some((r) => r.star);
           snd.enclose(area, e.combo, white, e.regions.length);
           vibrate(area >= 9 || e.regions.length > 1 ? [0, 30, 40, 30] : 18);
-          const [px, py] = v.cellXY(e.ox, e.oy);
-          v.fx.text(`+${fmt(e.points)}`, px, py - 10, { size: 22 + Math.min(16, Math.sqrt(area) * 4), color: '#fff', dur: 1.1 });
-          let y = center[1] - 44;
+          // Félicitations en anglais, empilées au centre de la grille sans se chevaucher.
+          const lines = [];
+          const praise = areaHype(biggest);
+          if (white) lines.push([HYPE.white, { size: 36, style: 'rainbow', dur: 1.7 }]);
+          if (e.regions.length >= 2) lines.push([multiHype(e.regions.length), { size: 36, style: 'fire' }]);
+          else if (praise) lines.push([praise, { size: 30 + Math.min(16, biggest), style: biggest >= 12 ? 'fire' : 'gold' }]);
+          if (star) { lines.push([HYPE.star, { size: 28, style: 'gold' }]); setTimeout(() => snd.starCaught(), 250); }
+          if (e.combo >= 2) {
+            const tier = comboTier(e.combo);
+            lines.push([tier ? `${HYPE.combo(e.combo)} ${tier}` : HYPE.combo(e.combo), { size: 24 + Math.min(14, e.combo), style: e.combo >= 6 ? 'fire' : 'ice', dur: 1.2 }]);
+          }
           v.fx.fadeTexts('praise');
-          const say = (text, opts) => { v.fx.text(text, center[0], y, { dur: 1.4, tag: 'praise', ...opts }); y += 40; };
-          if (white) say(t('game.white'), { size: 34, rainbow: true, dur: 1.6 });
-          if (e.regions.length >= 2) say(t(e.regions.length >= 3 ? 'game.triple' : 'game.double'), { size: 32, color: app.theme.ui.accent });
-          else if (biggest >= 4) say(t(biggest >= 16 ? 'praise.huge' : biggest >= 9 ? 'praise.big' : 'praise.good'), { size: 28 + Math.min(14, biggest), color: app.theme.ui.accent });
-          if (star) { say(t('game.starCaught'), { size: 28, color: '#ffd36b' }); setTimeout(() => snd.starCaught(), 250); }
-          if (e.combo >= 2) say(t('game.combo', { n: e.combo }), { size: 24 + Math.min(14, e.combo), color: e.combo >= 6 ? '#ff8a3d' : '#fff', dur: 1.1 });
+          const top = center[1] - 44;
+          let y = top, delay = 0;
+          for (const [text, opts] of lines) { v.fx.hype(text, center[0], y, { delay, ...opts }); y += opts.size * 1.25; delay += 0.12; }
+          // Les points s'affichent là où la pièce a été posée, sauf s'ils tombent sur la pile
+          // de félicitations : ils passent alors juste au-dessus ou juste en dessous.
+          const ptSize = 22 + Math.min(16, Math.sqrt(area) * 4), half = ptSize / 2;
+          let [px, py] = v.cellXY(e.ox, e.oy);
+          py -= 10;
+          if (lines.length) {
+            const stackTop = top - lines[0][1].size * 0.6 - 26;
+            const stackBottom = y - lines[lines.length - 1][1].size * 0.65;
+            if (py + half > stackTop && py - half - 40 < stackBottom) {
+              const above = Math.max(b.y + half + 4, stackTop - half - 4);
+              const below = Math.min(b.y + b.h - half - 4, stackBottom + half + 44);
+              const aboveFits = above + half <= stackTop, belowFits = below - half - 40 >= stackBottom;
+              py = aboveFits && (!belowFits || py < (stackTop + stackBottom) / 2) ? above : belowFits ? below : above;
+            }
+          }
+          v.fx.text(`+${fmt(e.points)}`, px, py, { size: ptSize, color: '#fff', dur: 1.1 });
+          if (biggest >= 9) {
+            const big = e.regions.reduce((a, r) => (r.area > a.area ? r : a));
+            let mx = 0, my = 0;
+            for (const k of big.cells) { const [qx, qy] = v.cellCenter(k); mx += qx; my += qy; }
+            v.fx.rays(mx / big.cells.length, my / big.cells.length, big.white ? 'rgba(255,255,255,0.5)' : 'rgba(255,220,140,0.45)', b.cell * (2 + Math.sqrt(biggest)));
+          }
           this.flyGems(e.regions);
           if (e.combo === 2) this.tip('combo', 900);
           if (white) this.tip('white', 1600);
-          if (s.tutorial && s.stats.areas === e.regions.length) {
-            setTimeout(() => this.banner(t(white ? 'tuto.white' : 'tuto.enclosed'), 4000, 'tip'), 600);
-            setTimeout(() => this.banner(t('tuto.edge'), 5500, 'tip'), 5000);
-          }
+          snd.setIntensity(Math.min(3, Math.floor(e.combo / 3)));
           break;
         }
         case 'boardClear':
-          v.fx.text(t('game.boardClear'), center[0], center[1] + 90, { size: 38, rainbow: true, dur: 1.8, delay: 0.35 });
+          v.fx.hype(HYPE.clean, center[0], center[1] + 100, { size: 38, style: 'rainbow', dur: 1.9, delay: 0.35, tag: 'clean' });
           v.fx.confetti(v.w, 70);
           v.fx.flash(0.2);
           setTimeout(() => snd.boardClear(), 300);
           break;
         case 'comboEnd':
           snd.comboEnd();
+          snd.setIntensity(0);
           break;
+        case 'tutorialStep':
+          v.revealBoard(1.1);
+          setTimeout(() => { if (this.s === s && s.tutorial != null) this.showTutorialStep(); }, 1200);
+          this.banner(t('tuto.good'), 1100, 'tip');
+          break;
+        case 'tutorialRetry':
+          v.revealBoard(0.5);
+          this.banner(t('tuto.retry'), 1500, 'tip');
+          setTimeout(() => { if (this.s === s && s.tutorial != null) this.showTutorialStep(); }, 1600);
+          break;
+        case 'tutorialDone':
+          this.app.profile.tutorialDone = true;
+          this.app.saveProfile();
+          this.el.classList.remove('in-tutorial');
+          v.hand = null;
+          setTimeout(() => this.banner(t('tuto.done'), 3500, 'tip'), e.skipped ? 0 : 1100);
+          break;
+        case 'timeBonus': {
+          const tb = $('.timer', this.el);
+          const r = tb ? tb.getBoundingClientRect() : null;
+          const tx = r ? r.left + r.width / 2 : center[0], ty = r ? r.bottom + 14 : b.y;
+          v.fx.hype(HYPE.time(e.seconds), tx, ty, { size: 22, style: 'ice', dur: 1.1, dy: 18, tag: 'time', tilt: 0 });
+          if (tb) { tb.classList.remove('gain'); void tb.offsetWidth; tb.classList.add('gain'); }
+          snd.timeBonus();
+          break;
+        }
+        case 'relief':
+          if (e.kind === 'clear') v.relieved(e);
+          else v.refill();
+          snd.relief();
+          this.banner(t('game.relief'), 1800);
+          break;
+        case 'fogSpread': {
+          const [fx0, fy0] = v.cellCenter(e.i);
+          v.fx.sparks(fx0, fy0, 10, ['#b9a6d8', '#8d7bb0'], 0.4);
+          snd.fogSpread();
+          break;
+        }
         case 'starSpawn': {
           const [cx, cy] = v.cellCenter(e.i);
           v.fx.sparks(cx, cy, 18, ['#ffe27a', '#ffffff'], 0.8);
@@ -546,7 +660,7 @@ export class GameScreen {
           setTimeout(() => {
             snd.record();
             v.fx.confetti(v.w, 110);
-            v.fx.text(t('game.record'), center[0], b.y + b.h * 0.18, { size: 38, color: app.theme.ui.accent, dur: 2 });
+            v.fx.hype(HYPE.record, center[0], b.y + b.h * 0.18, { size: 40, style: 'gold', dur: 2.1, tag: 'record' });
           }, 500);
           break;
         case 'stuck':
@@ -582,8 +696,8 @@ export class GameScreen {
     const got = unlockAchievements(app.profile, s, null, { liveOnly: true });
     got.forEach((a) => {
       this.liveTrophies.push(a);
-      // Un trophée à la fois : chaque texte attend que le précédent ait disparu.
-      const at = Math.max(performance.now() + 700, this.nextTrophyAt || 0);
+      // Un trophée à la fois, une fois les félicitations du coup retombées.
+      const at = Math.max(performance.now() + 1200, this.nextTrophyAt || 0);
       this.nextTrophyAt = at + 2300;
       setTimeout(() => {
         snd.trophy();
@@ -621,11 +735,17 @@ export class GameScreen {
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     let delay = 1300;
     if (e.status === 'won') {
-      v.fx.text(t('game.goalsDone'), cx, cy, { size: 36, rainbow: true, dur: 1.8, delay: 0.3 });
+      v.fx.hype(HYPE.levelClear, cx, cy, { size: 42, style: 'rainbow', dur: 1.9, delay: 0.3, tag: 'end' });
       setTimeout(() => { snd.win(); v.fx.confetti(v.w, 90); }, 300);
       delay = 1700;
+    } else if (e.reason === 'quit') {
+      delay = 300;
+    } else if (e.reason === 'time') {
+      v.fx.text(t('game.timeUp'), cx, cy, { size: 38, color: '#fff', dur: 1.8, delay: 0.1 });
+      setTimeout(() => { v.grayOut(); snd.timeUp(); }, 100);
+      delay = 1700;
     } else if (e.reason === 'done') {
-      v.fx.text(t('result.dailyDone'), cx, cy, { size: 34, rainbow: true, dur: 1.5, delay: 0.2 });
+      v.fx.hype(HYPE.dailyDone, cx, cy, { size: 32, style: 'rainbow', dur: 1.7, delay: 0.2, tag: 'end' });
       setTimeout(() => snd.win(), 200);
       delay = 1300;
     } else {
@@ -639,4 +759,4 @@ export class GameScreen {
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const s0tutorial = (s) => s.tutorial && s.moves === 0;
+const s0tutorial = (s) => s.tutorial != null;

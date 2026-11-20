@@ -1,15 +1,15 @@
 // Joueur automatique. Sert aux tests (chaque niveau doit être gagnable), à l'équilibrage,
 // aux médailles du défi du jour et aux indices pour les débutants.
 import { SHAPES, rotateKey } from './pieces.js';
-import { COLS, ROWS, CELLS, STONE, WHITE, GEM, STAR, isEdge, canPlace, fits, enclosures, ringOf, mixOf, bits } from './board.js';
-import { place, usePower, goalProgress, areaPoints, mixMult } from './engine.js';
+import { COLS, ROWS, CELLS, STONE, WHITE, GEM, STAR, FOG, isEdge, isCrystal, crystalNeed, canPlace, fits, enclosures, ringOf, mixOf, bits } from './board.js';
+import { place, usePower, goalState, areaPoints, mixMult } from './engine.js';
 
 const BIG = ['square3:0', 'line5:0', 'line5:1', 'corner5:0', 'rect6:0', 'rect6:1', 'square2:0', 'line4:0', 'line4:1'];
 const EDGE = Array.from({ length: CELLS }, (_, i) => isEdge(i));
 
 export const W = { pocket: 0.6, block: 0.5, edge: 0.3, room: 0.8, deadEdge: 2, enclose: 1, orb: 2.5, stone: 1.2 };
 
-const NO_GOALS = { gems: 0, stones: 0, whites: 0, big: 0, star: 1, areas: 0, light: 0 };
+const NO_GOALS = { gems: 0, stones: 0, whites: 0, big: 0, star: 1, areas: 0, light: 0, fog: 0, crystals: 0 };
 
 /** Évalue une grille (plus c'est haut, mieux c'est). */
 export function evaluate(b, gw = NO_GOALS) {
@@ -27,6 +27,8 @@ export function evaluate(b, gw = NO_GOALS) {
     let w = 1;
     if (o[i] === GEM) w += gw.gems ? W.orb : 0;
     if (o[i] === STAR) w += W.orb * gw.star;
+    if (o[i] === FOG) w += gw.fog ? W.orb * 1.5 : 0;
+    if (isCrystal(o[i])) w += gw.crystals ? W.orb : 0;
     pocket += nb * nb * w + (gw.stones ? stoneNb * W.stone : 0);
   }
   let room = 0;
@@ -43,7 +45,12 @@ function enclosureValue(c, o, gw) {
     const ring = ringOf(c, cells);
     const mix = mixOf(c, ring);
     v += (areaPoints(cells.length) + 5 * ring.length) * mixMult(mix) / 10;
-    for (const k of cells) { if (o[k] === GEM) v += gw.gems; if (o[k] === STAR) v += 40 * gw.star; }
+    for (const k of cells) {
+      if (o[k] === GEM) v += gw.gems;
+      if (o[k] === STAR) v += 40 * gw.star;
+      if (o[k] === FOG) v += gw.fog;
+      if (isCrystal(o[k])) v += cells.length >= crystalNeed(o[k]) ? gw.crystals : -gw.crystals * 0.3;
+    }
     for (const j of ring) if (c[j] === STONE) v += gw.stones;
     if (mix === WHITE) v += gw.whites;
     if (gw.big && cells.length >= gw.big) v += 60;
@@ -60,7 +67,7 @@ function moveValue(b, sh, x, y, col, gw) {
   const oUndo = [];
   for (const cells of regs) {
     for (const j of ringOf(c, cells)) { undo.push(j, c[j]); c[j] = 0; }
-    for (const k of cells) if (o[k]) { oUndo.push(k, o[k]); o[k] = 0; }
+    for (const k of cells) if (o[k] && !(isCrystal(o[k]) && cells.length < crystalNeed(o[k]))) { oUndo.push(k, o[k]); o[k] = 0; }
   }
   const value = v * W.enclose + evaluate(b, gw);
   for (let j = undo.length - 2; j >= 0; j -= 2) c[undo[j]] = undo[j + 1];
@@ -69,14 +76,16 @@ function moveValue(b, sh, x, y, col, gw) {
 }
 
 function goalWeights(s) {
-  const w = { gems: 0, stones: 0, whites: 0, big: 0, star: s.mode === 'classic' ? 1 : 0, areas: 0, light: 0 };
+  const w = { gems: 0, stones: 0, whites: 0, big: 0, star: s.mode === 'adventure' || s.mode === 'daily' ? 0 : 1, areas: 0, light: 0, fog: 0, crystals: 0 };
   for (const g of s.goals || []) {
-    if (goalProgress(s, g) >= g.target) continue;
+    if (goalState(s, g).done) continue;
     if (g.type === 'gems') w.gems = 30;
     if (g.type === 'stones') w.stones = 6;
     if (g.type === 'whites') w.whites = 25;
     if (g.type === 'big') w.big = g.target;
     if (g.type === 'areas') w.areas = 25;
+    if (g.type === 'fog') w.fog = 30;
+    if (g.type === 'crystals') w.crystals = 45;
     if (g.type === 'light') w.light = 10;
   }
   return w;

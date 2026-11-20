@@ -97,7 +97,9 @@ button:disabled { cursor: default; }
 /* ------------------------------------------------------------ accueil */
 .menu-screen { display: flex; flex-direction: column; align-items: center; padding: calc(var(--safe-t) + 14px) 16px calc(var(--safe-b) + 14px); overflow: hidden; transition: opacity .25s ease, transform .25s ease; }
 .menu-screen.enter { opacity: 0; transform: translateY(12px); }
-.home { justify-content: space-between; }
+.home { justify-content: flex-start; gap: 10px; }
+.home-scroll { flex: 1; min-height: 0; width: 100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; gap: 14px; padding: 4px 2px 8px; scrollbar-width: none; }
+.home-scroll::-webkit-scrollbar { display: none; }
 .home-top { width: 100%; max-width: 520px; display: flex; justify-content: space-between; align-items: center; }
 .player-chip { display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 10px; border-radius: 16px; background: var(--panel); border: 1px solid var(--edge); }
 .player-lv { font-weight: 700; font-size: 15px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: var(--btnText); padding: 3px 9px; border-radius: 10px; }
@@ -105,7 +107,7 @@ button:disabled { cursor: default; }
 .light .player-bar { background: rgba(0,0,0,.1); }
 .player-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 6px; }
 
-.logo-wrap { text-align: center; margin-top: 2vh; }
+.logo-wrap { text-align: center; flex: none; }
 .logo-prism { width: 120px; margin: 0 auto -6px; filter: drop-shadow(0 6px 20px rgba(0,0,0,.35)); }
 .logo-prism svg { width: 100%; display: block; }
 .logo { margin: 0; font-size: clamp(54px, 16vw, 92px); font-weight: 700; letter-spacing: .04em; line-height: 1; display: flex; justify-content: center; gap: .02em; }
@@ -141,6 +143,54 @@ button:disabled { cursor: default; }
 .mode-ic .ic { width: 24px; height: 24px; }
 .adv .mode-ic { background: linear-gradient(135deg, var(--c3), var(--c4)); }
 .daily .mode-ic { background: linear-gradient(135deg, var(--c2), var(--c1)); }
+.blitz .mode-ic { background: linear-gradient(135deg, #ffd04d, #ff6a3d); }
+.zen .mode-ic { background: linear-gradient(135deg, #7ee8c8, #5b8cff); }
+.mode-meta .ic { color: var(--accent); }
+
+/* Missions du jour */
+.missions-card { padding: 12px 14px; border-radius: 22px; background: var(--panel); border: 1px solid var(--edge); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; flex-direction: column; gap: 9px; }
+.missions-head { display: flex; justify-content: space-between; align-items: center; }
+.missions-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 16px; }
+.missions-title .ic, .missions-bonus .ic { width: 18px; height: 18px; color: var(--accent); }
+.missions-bonus { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 14px; color: var(--muted); }
+.missions-bonus.got { color: var(--accent); }
+.mission { display: flex; align-items: center; gap: 10px; }
+.mission-ic { width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; background: rgba(255,255,255,.07); flex: none; }
+.light .mission-ic { background: rgba(0,0,0,.06); }
+.mission-ic .ic { width: 18px; height: 18px; color: var(--accent); }
+.mission.done .mission-ic { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+.mission.done .mission-ic .ic { color: var(--btnText); }
+.mission-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.mission-top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 600; }
+.mission-top b { color: var(--accent); font-size: 13px; white-space: nowrap; }
+.mission.done .mission-top span { opacity: .6; text-decoration: line-through; }
+.mission-bar { height: 6px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+.light .mission-bar { background: rgba(0,0,0,.08); }
+.mission-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.mission-done { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.mission-chip { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 18%, transparent); font-weight: 600; font-size: 14px; text-align: left; animation: pop .4s ease 1s both; }
+.mission-chip span:nth-child(2) { flex: 1; }
+.mission-chip .ic { width: 18px; height: 18px; color: var(--accent); }
+.mission-chip b { color: var(--accent); }
+.mission-chip.bonus { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 40%, transparent), color-mix(in srgb, var(--accent2) 35%, transparent)); }
+.intro-note { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+.intro-note .ic { width: 18px; height: 18px; color: var(--accent); flex: none; }
+
+/* Chrono du Blitz */
+.timer { position: relative; width: 56px; height: 56px; display: grid; place-items: center; }
+.timer svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.timer circle { fill: none; stroke-width: 3.5; }
+.timer .timer-bg { stroke: rgba(255,255,255,.14); fill: var(--panel); }
+.timer .timer-fg { stroke: var(--accent); stroke-dasharray: 100; stroke-linecap: round; transition: stroke-dashoffset .3s linear; }
+.timer b { position: relative; font-size: 20px; font-variant-numeric: tabular-nums; }
+.timer.low .timer-fg { stroke: #ff5a4f; }
+.timer.low b { color: #ff7a6f; animation: bump .5s ease infinite; }
+.timer.gain { animation: gain .5s ease; }
+
+/* Initiation */
+.skip-tuto { position: absolute; top: calc(var(--safe-t) + 14px); right: 14px; display: none; z-index: 5; }
+.in-tutorial .skip-tuto { display: inline-flex; }
+.in-tutorial #hud-right { visibility: hidden; }
 .mode-name { font-weight: 700; font-size: 18px; }
 .mode-sub { color: var(--muted); font-size: 14px; }
 .mode-meta { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-weight: 600; font-size: 14px; }
@@ -168,6 +218,7 @@ button:disabled { cursor: default; }
 .world-stars { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 14px; white-space: nowrap; }
 .w1 { --wc: linear-gradient(135deg, #ffb347, #ff5f6d); } .w2 { --wc: linear-gradient(135deg, #43e0ff, #3d6bff); } .w3 { --wc: linear-gradient(135deg, #a7a3b8, #6e6a82); }
 .w4 { --wc: linear-gradient(135deg, #ff6bd6, #7b6bff); } .w5 { --wc: linear-gradient(135deg, #7ddc5a, #1ea97c); } .w6 { --wc: linear-gradient(135deg, #ffe17a, #ff8a3d); }
+.w7 { --wc: linear-gradient(135deg, #c9b8ff, #7a6aa8); } .w8 { --wc: linear-gradient(135deg, #d38bff, #3fd6ff); }
 .world.locked .world-head { opacity: .55; }
 .lvl-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
 .lvl {
@@ -444,6 +495,25 @@ button:disabled { cursor: default; }
 .noscript { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; font-size: 20px; padding: 20px; text-align: center; }
 
 /* ------------------------------------------------------------ petits écrans */
+/* Accueil : tout doit tenir sur un téléphone (logo plus petit, cartes compactes). */
+.home .logo-prism { width: 92px; margin-bottom: -10px; }
+.home .logo { font-size: clamp(48px, 14vw, 78px); }
+.home .tagline { margin-top: 4px; font-size: 15px; }
+.home .play-btn { min-height: 74px; }
+.home .mode-cards { gap: 10px; }
+.home .mode-card { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: 0; align-items: center; padding: 10px 12px; }
+.home .mode-card .mode-ic { grid-row: 1 / 3; width: 38px; height: 38px; margin: 0; }
+.home .mode-card .mode-name { font-size: 16px; line-height: 1.15; }
+.home .mode-card .mode-sub { font-size: 12.5px; line-height: 1.2; }
+.home .mode-card .mode-meta { display: inline-flex; align-items: center; gap: 3px; margin: 0; font-size: 12.5px; vertical-align: -2px; }
+.home .mode-card .mode-meta .ic { width: 13px; height: 13px; }
+.home .mode-card .dot-new { top: auto; bottom: 10px; right: 10px; width: 10px; height: 10px; }
+@media (max-height: 760px) {
+  .home .logo-prism { display: none; }
+  .home .logo { font-size: clamp(42px, 12vw, 60px); }
+  .home .tagline { font-size: 14px; }
+  .home .play-btn { min-height: 64px; }
+}
 @media (max-height: 640px) {
   .logo-prism { width: 90px; }
   .logo { font-size: clamp(46px, 13vw, 70px); }

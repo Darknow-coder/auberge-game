@@ -1,10 +1,11 @@
 // Écrans de menu (DOM) : accueil, Aventure, défi du jour, trophées, statistiques, thèmes, réglages.
 import { h } from './dom.js';
 import { icon } from './icons.js';
-import { t, fmt, getLang, LANGS } from '../core/i18n.js';
+import { t, tn, fmt, getLang, LANGS } from '../core/i18n.js';
 import { LEVELS, WORLDS } from '../game/levels.js';
 import { dateKey, keyToDate } from '../game/daily.js';
-import { loadGame, levelInfo, levelUnlocked, nextLevel, totalStars, currentStreak } from '../meta/profile.js';
+import { loadGame, levelInfo, levelUnlocked, nextLevel, totalStars, currentStreak, ensureMissions } from '../meta/profile.js';
+import { missionIcon } from '../meta/missions.js';
 import { ACHIEVEMENTS } from '../meta/achievements.js';
 import { THEMES } from '../meta/themes.js';
 import { blockSprite } from '../render/blocks.js';
@@ -23,6 +24,26 @@ function logo() {
     h('p.tagline', { text: t('app.tagline') }));
 }
 
+function missionsCard(app) {
+  const p = app.profile;
+  const ms = ensureMissions(p, dateKey());
+  const done = ms.list.filter((m) => m.done).length;
+  const row = (m) => {
+    const label = m.type === 'classic' || m.type === 'blitz' ? t(`mission.${m.type}`, { n: fmt(m.target) }) : tn(`mission.${m.type}`, m.target);
+    const pct = Math.min(100, (m.progress / m.target) * 100);
+    return h(`div.mission${m.done ? '.done' : ''}`,
+      h('span.mission-ic', { html: icon(m.done ? 'check' : missionIcon(m.type)) }),
+      h('div.mission-body',
+        h('div.mission-top', h('span', { text: label }), h('b', { text: `+${m.xp}` })),
+        h('div.mission-bar', h('i', { style: { width: `${pct}%` } }))));
+  };
+  return h('div.missions-card',
+    h('div.missions-head',
+      h('span.missions-title', { html: `${icon('target')} ${t('mission.title')}` }),
+      h(`span.missions-bonus${ms.bonus ? '.got' : ''}`, { html: `${icon('gift')} ${done}/3` })),
+    ms.list.map(row));
+}
+
 function home(app) {
   const p = app.profile;
   const lv = levelInfo(p.xp);
@@ -33,30 +54,31 @@ function home(app) {
   const streak = currentStreak(p, today);
   const stars = totalStars(p);
   const ach = Object.keys(p.ach).length;
+  const esc = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  const card = (id, cls, ic, name, sub, meta, onclick, extra = null) => h(`button.mode-card.${cls}#${id}`, { onclick: () => { app.sound.tap(); onclick(); } },
+    h('span.mode-ic', { html: icon(ic) }),
+    h('span.mode-name', { text: name }),
+    h('span.mode-sub', { html: meta ? `${esc(sub)} · <span class="mode-meta">${meta}</span>` : esc(sub) }),
+    extra);
   return h('section.home#screen-home',
     h('div.home-top',
       h('button.player-chip', { onclick: () => app.show('stats'), 'aria-label': t('home.stats') },
         h('span.player-lv', { text: t('home.level', { n: lv.level }) }),
         h('span.player-bar', h('span', { style: { width: `${lv.pct * 100}%` } }))),
       h('button.icon-btn', { 'aria-label': t('home.settings'), html: icon('gear'), onclick: () => { app.sound.tap(); app.show('settings'); } })),
-    logo(),
-    h('div.home-main',
-      h('button.btn.primary.huge.play-btn#btn-play', { autofocus: true, onclick: () => { app.sound.tap(); app.startClassic(); } },
-        h('span.play-ic', { html: icon('play') }),
-        h('span.play-txt', h('b', { text: saved ? t('home.continue') : t('home.play') }),
-          h('small', { text: saved ? t('home.resume', { n: fmt(saved.score) }) : p.best.classic ? t('home.best', { n: fmt(p.best.classic) }) : t('home.classicSub') }))),
-      h('div.mode-cards',
-        h('button.mode-card.adv#btn-adventure', { onclick: () => { app.sound.tap(); app.show('adventure'); } },
-          h('span.mode-ic', { html: icon('peak') }),
-          h('span.mode-name', { text: t('home.adventure') }),
-          h('span.mode-sub', { text: next ? t('home.adventureSub', { n: next }) : t('home.adventureDone') }),
-          h('span.mode-meta', { html: `${icon('starFill')} ${stars}` })),
-        h('button.mode-card.daily#btn-daily', { onclick: () => { app.sound.tap(); app.show('daily'); } },
-          h('span.mode-ic', { html: icon('calendar') }),
-          h('span.mode-name', { text: t('home.daily') }),
-          h('span.mode-sub', { text: doneToday ? t('home.dailyDone') : t('home.dailyTodo') }),
-          h(`span.mode-meta${streak ? '.hot' : ''}`, { html: `${icon('flame')} ${t('home.streak', { n: streak })}` }),
-          doneToday ? null : h('span.dot-new')))),
+    h('div.home-scroll',
+      logo(),
+      h('div.home-main',
+        h('button.btn.primary.huge.play-btn#btn-play', { autofocus: true, onclick: () => { app.sound.tap(); app.startClassic(); } },
+          h('span.play-ic', { html: icon('play') }),
+          h('span.play-txt', h('b', { text: saved ? t('home.continue') : t('home.play') }),
+            h('small', { text: saved ? t('home.resume', { n: fmt(saved.score) }) : p.best.classic ? t('home.best', { n: fmt(p.best.classic) }) : t('home.classicSub') }))),
+        h('div.mode-cards',
+          card('btn-adventure', 'adv', 'peak', t('home.adventure'), next ? t('home.adventureSub', { n: next }) : t('home.adventureDone'), `${icon('starFill')} ${stars}`, () => app.show('adventure')),
+          card('btn-daily', 'daily', 'calendar', t('home.daily'), doneToday ? t('home.dailyDone') : t('home.dailyTodo'), `${icon('flame')} ${t('home.streak', { n: streak })}`, () => app.show('daily'), doneToday ? null : h('span.dot-new')),
+          card('btn-blitz', 'blitz', 'clock', t('mode.blitz'), loadGame('blitz') ? t('home.continue') : p.best.blitz ? t('home.best', { n: fmt(p.best.blitz) }) : t('mode.blitzSub'), null, () => app.startArcade('blitz')),
+          card('btn-zen', 'zen', 'lotus', t('mode.zen'), loadGame('zen') ? t('home.continue') : p.best.zen ? t('home.best', { n: fmt(p.best.zen) }) : t('mode.zenSub'), null, () => app.startArcade('zen'))),
+        missionsCard(app))),
     h('nav.home-nav',
       h('button.nav-btn', { onclick: () => app.show('trophies'), html: `${icon('trophy')}<span>${t('home.trophies')}</span><small>${ach}/${ACHIEVEMENTS.length}</small>` }),
       h('button.nav-btn', { onclick: () => app.show('stats'), html: `${icon('chart')}<span>${t('home.stats')}</span>` }),
@@ -159,6 +181,9 @@ function stats(app) {
   const rows = [
     ['stats.games', fmt(s.games)],
     ['stats.bestClassic', fmt(p.best.classic)],
+    ['stats.bestBlitz', fmt(p.best.blitz || 0)],
+    ['stats.bestZen', fmt(p.best.zen || 0)],
+    ['stats.missions', fmt(s.missions || 0)],
     ['stats.avgClassic', fmt(s.classicGames ? s.classicTotal / s.classicGames : 0)],
     ['stats.areas', fmt(s.areas)],
     ['stats.light', fmt(s.light)],

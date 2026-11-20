@@ -1,6 +1,7 @@
 // Grille de jeu : 8 colonnes × 9 lignes.
 // `c[i]` : 0 = vide, 1 / 2 / 4 = bloc de lumière rouge / verte / bleue, STONE = pierre.
-// `o[i]` : objet posé sur une case VIDE (gemme en Aventure, étoile filante en Classique).
+// `o[i]` : objet posé sur une case VIDE : gemme (GEM), étoile filante (STAR), brume (FOG),
+//          cristal (CRYSTAL + k : il ne se récolte que dans un enclos d'au moins k cases).
 //          Une case qui porte un objet ne peut pas recevoir de pièce : il faut l'encercler.
 //
 // Règle centrale : une zone de cases vides qui n'est plus reliée au bord de la grille est
@@ -13,7 +14,11 @@ export const ROWS = 9;
 export const CELLS = COLS * ROWS;
 export const R = 1, G = 2, B = 4, WHITE = 7, STONE = 8;
 export const COLORS = [R, G, B];
-export const GEM = 1, STAR = 2;
+export const GEM = 1, STAR = 2, FOG = 3, CRYSTAL = 10;
+/** Cristal exigeant un enclos d'au moins k cases (k de 2 à 9). */
+export const crystal = (k) => CRYSTAL + k;
+export const isCrystal = (o) => o > CRYSTAL && o < CRYSTAL + 10;
+export const crystalNeed = (o) => o - CRYSTAL;
 
 export const bits = (m) => (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1);
 export const idx = (x, y) => y * COLS + x;
@@ -115,11 +120,21 @@ export function findEnclosures(b) {
   return enclosures(b.c).map((cells) => {
     const ring = ringOf(b.c, cells);
     const gemCells = cells.filter((k) => b.o[k] === GEM);
+    const fogCells = cells.filter((k) => b.o[k] === FOG);
+    // Un cristal n'est récolté que si l'enclos est assez grand.
+    const crystalCells = cells.filter((k) => isCrystal(b.o[k]) && cells.length >= crystalNeed(b.o[k]));
+    const crystalsLeft = cells.filter((k) => isCrystal(b.o[k]) && cells.length < crystalNeed(b.o[k]));
     let stars = 0, stones = 0;
     for (const k of cells) if (b.o[k] === STAR) stars++;
     for (const j of ring) if (b.c[j] === STONE) stones++;
-    return { cells, ring, mix: mixOf(b.c, ring), gems: gemCells.length, gemCells, stars, stones };
+    return { cells, ring, mix: mixOf(b.c, ring), gems: gemCells.length, gemCells, stars, stones, fog: fogCells.length, fogCells, crystals: crystalCells.length, crystalCells, crystalsLeft };
   });
+}
+
+export function countObjects(o, kind) {
+  let n = 0;
+  for (let i = 0; i < CELLS; i++) if (kind === CRYSTAL ? isCrystal(o[i]) : o[i] === kind) n++;
+  return n;
 }
 
 /** Pose la pièce (sans vérification). Renvoie les index occupés. */
@@ -143,7 +158,8 @@ export function resolve(b) {
   const clear = new Set();
   for (const r of regions) {
     for (const j of r.ring) clear.add(j);
-    for (const k of r.cells) b.o[k] = 0;
+    const keep = new Set(r.crystalsLeft);
+    for (const k of r.cells) if (!keep.has(k)) b.o[k] = 0;
   }
   const cleared = [...clear].sort((a, b2) => a - b2).map((i) => ({ i, c: b.c[i] }));
   for (const { i } of cleared) b.c[i] = 0;
@@ -174,7 +190,10 @@ export function shapeOf(piece) {
   return SHAPES[piece.k];
 }
 
-/** Grille depuis 9 chaînes de 8 caractères : '.' vide, r g b blocs, '#' pierre, 'o' gemme, '*' étoile. */
+/**
+ * Grille depuis 9 chaînes de 8 caractères : '.' vide, r g b blocs, '#' pierre, 'o' gemme,
+ * '*' étoile, '~' brume, '2'…'9' cristal (taille d'enclos exigée).
+ */
 export function boardFromRows(rows) {
   const b = createBoard();
   const col = { r: R, g: G, b: B };
@@ -184,6 +203,8 @@ export function boardFromRows(rows) {
     else if (ch === '#') b.c[i] = STONE;
     else if (ch === 'o') b.o[i] = GEM;
     else if (ch === '*') b.o[i] = STAR;
+    else if (ch === '~') b.o[i] = FOG;
+    else if (ch >= '2' && ch <= '9') b.o[i] = crystal(+ch);
   }));
   return b;
 }

@@ -59,31 +59,44 @@ try {
   check((await page.textContent('#btn-play')).includes('Jouer'), 'accueil en français');
   await page.screenshot({ path: path.join(shots, 'accueil.png') });
 
-  // Initiation : la première pièce ferme un enclos de lumière blanche.
+  check(await page.isVisible('.missions-card') && (await page.$$('.mission')).length === 3, 'trois missions du jour à l\'accueil');
+
+  // Initiation guidée en trois étapes : la première pièce ferme un enclos de lumière blanche.
   await page.click('#btn-play');
   await page.waitForTimeout(400);
   check(await page.evaluate(() => !!window.__prisme.view.hand), 'la main de l\'initiation est affichée');
-  const tuto = await page.evaluate(() => {
-    const v = window.__prisme.view, tp = v.trayPiece(0), [x, y] = v.cellXY(3, 5);
-    return { from: [tp.x + tp.cell, tp.y + tp.cell / 2], to: [x + v.board.cell, y + v.board.cell / 2] };
-  });
-  await page.mouse.move(...tuto.from);
-  await page.mouse.down();
-  await page.mouse.move(tuto.to[0], tuto.to[1], { steps: 10 });
-  const ghost = await page.evaluate(() => window.__prisme.view.drag && window.__prisme.view.drag.ghost);
-  check(ghost && ghost.x === 3 && ghost.y === 5 && ghost.regions.length === 1 && ghost.points > 0, 'l\'aperçu montre la zone qui va s\'illuminer et les points');
-  await page.mouse.up();
+  check(await page.isVisible('#skip-tuto'), 'bouton « Passer » pendant l\'initiation');
+  const tutoDrag = async (checkGhost) => {
+    const d = await page.evaluate(async () => {
+      const { TUTORIAL } = await import('/src/game/engine.js');
+      const v = window.__prisme.view, s = window.__prisme.game.s, step = TUTORIAL[s.tutorial];
+      const tp = v.trayPiece(0), [x, y] = v.cellXY(step.target.x, step.target.y), sh = tp.sh;
+      return { from: [tp.x + tp.cell / 2, tp.y + tp.cell / 2], to: [x + (sh.w * v.board.cell) / 2, y + (sh.h * v.board.cell) / 2], target: step.target };
+    });
+    await page.mouse.move(...d.from);
+    await page.mouse.down();
+    await page.mouse.move(d.to[0], d.to[1], { steps: 10 });
+    if (checkGhost) {
+      const ghost = await page.evaluate(() => window.__prisme.view.drag && window.__prisme.view.drag.ghost);
+      check(ghost && ghost.x === d.target.x && ghost.y === d.target.y && ghost.regions.length === 1 && ghost.points > 0, 'l\'aperçu montre la zone qui va s\'illuminer et les points');
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(1300);
+  };
+  await tutoDrag(true);
   let st = await state(page);
-  check(st.moves === 1 && st.score > 900, `pose à la souris + enclos de lumière blanche + grille nette (${st.score} pts)`);
-  check(await page.evaluate(() => window.__prisme.profile.tutorialDone), 'initiation marquée comme faite');
+  check(st.moves === 1 && st.score > 900, `enclos de lumière blanche + grille nette (${st.score} pts)`);
+  await tutoDrag(false);
+  await tutoDrag(false);
+  check(await page.evaluate(() => window.__prisme.profile.tutorialDone && window.__prisme.game.s.tutorial === null), 'initiation en 3 étapes terminée');
+  check(await page.evaluate(() => window.__prisme.game.s.tray.filter(Boolean).length === 3), 'la partie normale commence');
 
   // Clavier : 1 choisit la pièce, les flèches la déplacent, Entrée la pose.
-  const kbOk = await page.evaluate(() => { const s = window.__prisme.game.s; return s.tray[1] != null; });
-  await page.keyboard.press(kbOk ? '2' : '3');
+  await page.keyboard.press('1');
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   st = await state(page);
-  check(st.moves === 2, 'pose au clavier');
+  check(st.moves === 4, 'pose au clavier');
 
   // Pause
   await page.keyboard.press('Escape');
@@ -191,6 +204,44 @@ try {
   await page.evaluate(() => window.__prisme.show('trophies'));
   check((await page.$$('.ach.on')).length > 3, 'trophées débloqués visibles');
   await ctx.close();
+
+  // ------------------------------------------------------------ Blitz, Zen, initiation passée
+  const actx = await browser.newContext({ viewport: { width: 420, height: 860 }, locale: 'fr-FR' });
+  const arc = await actx.newPage();
+  watch(arc, 'modes');
+  await fresh(arc);
+  await arc.click('#btn-play');
+  await arc.waitForTimeout(300);
+  await arc.click('#skip-tuto');
+  await arc.waitForTimeout(300);
+  check(await arc.evaluate(() => window.__prisme.game.s.tutorial === null && window.__prisme.profile.tutorialDone && window.__prisme.game.s.tray.filter(Boolean).length === 3), 'initiation passée : partie normale');
+  await arc.evaluate(() => window.__prisme.show('home'));
+  await arc.click('#btn-blitz');
+  await arc.waitForTimeout(600);
+  const t0 = await arc.evaluate(() => window.__prisme.game.s.time);
+  check(await arc.isVisible('.timer') && t0 > 80 && t0 <= 90, `Blitz : chrono affiché (${Math.round(t0)} s)`);
+  await botPlay(arc, 6);
+  await arc.evaluate(() => { window.__prisme.game.s.time = 1.5; });
+  await arc.waitForSelector('text=Temps écoulé', { timeout: 8000 });
+  check(await arc.evaluate(() => window.__prisme.profile.best.blitz > 0), 'Blitz : score enregistré au chrono');
+  await arc.click('text=Accueil');
+  await arc.click('#btn-zen');
+  await arc.waitForTimeout(400);
+  await arc.evaluate(() => {
+    const s = window.__prisme.game.s;
+    for (let y = 0; y < 9; y++) for (let x = 0; x < 8; x++) { s.board.c[y * 8 + x] = x === 0 && y % 2 === 0 ? 0 : 1; s.board.o[y * 8 + x] = 0; }
+    s.tray = [{ k: 'mono:0', col: 1 }, { k: 'square3:0', col: 1 }, null];
+    s.star = null;
+    window.__prisme.game.start(s);
+  });
+  await arc.evaluate(() => window.__prisme.game.doPlace(0, 0, 0));
+  check(await arc.evaluate(() => window.__prisme.game.s.status === 'play' && window.__prisme.game.s.stats.reliefs === 1), 'Zen : jamais bloqué, la grille se dégage');
+  await arc.keyboard.press('Escape');
+  await arc.click('text=Terminer la séance');
+  await arc.waitForSelector('text=Belle séance', { timeout: 5000 });
+  check(true, 'Zen : séance terminée depuis la pause');
+  await arc.screenshot({ path: path.join(shots, 'zen-bilan.png') });
+  await actx.close();
 
   // ------------------------------------------------------------ Téléphone (tactile)
   const mctx = await browser.newContext({ ...devices['iPhone 13'], locale: 'fr-FR' });

@@ -63,6 +63,8 @@ export function blockSprite(theme, kind, size, opts = {}) {
   ctx.translate(pad, pad);
   if (kind === STONE) drawStone(ctx, size, theme);
   else if (kind === 'gem') drawGem(ctx, size);
+  else if (kind === 'crystal') drawCrystal(ctx, size);
+  else if (kind === 'fog') drawCloud(ctx, size);
   else if (kind === 'star') drawStar(ctx, size);
   else {
     const color = kind === 'gray' ? (theme.dark ? '#5d5a70' : '#b8ad9e') : lightColor(theme, kind);
@@ -205,6 +207,82 @@ function drawGem(ctx, s) {
   ctx.lineTo(cx + r * 0.25, cy - r * 0.35);
   ctx.lineTo(cx + r * 0.5, cy - r * 0.85);
   ctx.stroke();
+}
+
+/** Halo lumineux circulaire (mis en cache) : sert à la lumière des enclos et à la brume. */
+export function glowSprite(color, size) {
+  size = Math.max(4, Math.round(size));
+  const key = `glow|${color}|${size}`;
+  let cv = cache.get(key);
+  if (cv) return cv;
+  cv = makeCanvas(size, size);
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, color);
+  g.addColorStop(0.45, rgba(color, 0.55));
+  g.addColorStop(1, rgba(color, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  cache.set(key, cv);
+  return cv;
+}
+
+/** Nuage de brume (mode Aventure). */
+function drawCloud(ctx, s) {
+  ctx.save();
+  ctx.shadowColor = 'rgba(200, 180, 255, 0.8)';
+  ctx.shadowBlur = s * 0.2;
+  const grad = ctx.createLinearGradient(0, s * 0.25, 0, s * 0.78);
+  grad.addColorStop(0, '#f3edff');
+  grad.addColorStop(1, '#a796d6');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(s * 0.36, s * 0.56, s * 0.17, 0, Math.PI * 2);
+  ctx.arc(s * 0.52, s * 0.44, s * 0.2, 0, Math.PI * 2);
+  ctx.arc(s * 0.67, s * 0.57, s * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(s * 0.36, s * 0.55, s * 0.31, s * 0.17);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(90, 70, 140, 0.35)';
+  ctx.fillRect(s * 0.3, s * 0.68, s * 0.42, s * 0.05);
+}
+
+/** Cristal (mode Aventure) : prisme hexagonal violet et cyan. */
+function drawCrystal(ctx, s) {
+  const cx = s / 2, cy = s / 2;
+  const w = s * 0.24, hgt = s * 0.38;
+  ctx.save();
+  ctx.shadowColor = 'rgba(190, 120, 255, 0.9)';
+  ctx.shadowBlur = s * 0.28;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - hgt);
+  ctx.lineTo(cx + w, cy - hgt * 0.45);
+  ctx.lineTo(cx + w, cy + hgt * 0.45);
+  ctx.lineTo(cx, cy + hgt);
+  ctx.lineTo(cx - w, cy + hgt * 0.45);
+  ctx.lineTo(cx - w, cy - hgt * 0.45);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(cx - w, cy - hgt, cx + w, cy + hgt);
+  grad.addColorStop(0, '#fbeaff');
+  grad.addColorStop(0.4, '#c78bff');
+  grad.addColorStop(1, '#5a3dff');
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(40, 10, 90, 0.6)';
+  ctx.lineWidth = Math.max(1, s * 0.025);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - hgt);
+  ctx.lineTo(cx, cy + hgt);
+  ctx.moveTo(cx - w, cy - hgt * 0.45);
+  ctx.lineTo(cx, cy - hgt * 0.1);
+  ctx.lineTo(cx + w, cy - hgt * 0.45);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.arc(cx - w * 0.45, cy - hgt * 0.4, s * 0.035, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 export function starPath(ctx, cx, cy, r) {

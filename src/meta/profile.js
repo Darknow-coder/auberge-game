@@ -4,6 +4,7 @@ import { THEMES } from './themes.js';
 import { unlockAchievements, totalStars } from './achievements.js';
 import { starsFor } from '../game/engine.js';
 import { keyToDate, dateKey } from '../game/daily.js';
+import { applyMissions, ensureMissions } from './missions.js';
 
 const PROFILE_KEY = 'prisme.profile.v1';
 const SAVE_PREFIX = 'prisme.save.';
@@ -30,8 +31,9 @@ export function defaultProfile() {
     xp: 0,
     theme: 'nuit',
     settings: { sfx: true, music: true, vibrate: true, symbols: false, motion: false, lang: null },
-    best: { classic: 0 },
-    stats: { games: 0, classicGames: 0, classicTotal: 0, areas: 0, light: 0, whites: 0, maxArea: 0, multi: 0, shooting: 0, boardClears: 0, bestCombo: 0, pieces: 0, powers: 0, rescues: 0, time: 0 },
+    best: { classic: 0, blitz: 0, zen: 0 },
+    stats: { games: 0, classicGames: 0, classicTotal: 0, blitzGames: 0, zenGames: 0, areas: 0, light: 0, whites: 0, maxArea: 0, multi: 0, shooting: 0, crystals: 0, fog: 0, boardClears: 0, bestCombo: 0, pieces: 0, powers: 0, rescues: 0, missions: 0, missionDays: 0, time: 0 },
+    missions: null,
     ach: {},
     adv: {},
     daily: { days: {}, streak: 0, bestStreak: 0, last: null },
@@ -65,7 +67,7 @@ export function saveProfile(p) {
 
 export function resetProfile() {
   store.remove(PROFILE_KEY);
-  for (const slot of ['classic', 'adventure', 'daily']) clearGame(slot);
+  for (const slot of ['classic', 'adventure', 'daily', 'blitz', 'zen']) clearGame(slot);
   return defaultProfile();
 }
 
@@ -97,7 +99,7 @@ export function nextLevel(p, max) {
   for (let n = 1; n <= max; n++) if (!(p.adv[n] >= 1)) return n;
   return null;
 }
-export { totalStars };
+export { totalStars, ensureMissions };
 
 // ---------- Défi du jour
 export function currentStreak(p, today = dateKey()) {
@@ -130,6 +132,8 @@ function registerDaily(p, key, score, medal) {
 // ---------- Fin de partie
 export function xpForGame(s, info = {}) {
   if (s.mode === 'classic') return 10 + Math.floor(s.score / 50);
+  if (s.mode === 'blitz') return 10 + Math.floor(s.score / 40);
+  if (s.mode === 'zen') return 5 + Math.floor(s.score / 80);
   if (s.mode === 'adventure') {
     if (s.status !== 'won') return 5 + Math.floor(s.score / 100);
     return 25 + 10 * starsFor(s) + (info.firstWin ? 30 : 0);
@@ -158,17 +162,22 @@ export function recordGame(p, s, info = {}) {
   st.maxArea = Math.max(st.maxArea, g.maxArea);
   st.multi = Math.max(st.multi, g.multi);
   st.boardClears += g.boardClears;
+  st.crystals += g.crystals || 0;
+  st.fog += g.fog || 0;
   st.bestCombo = Math.max(st.bestCombo, g.maxCombo);
   st.pieces += g.placed;
   st.powers += g.powersUsed;
   st.rescues += g.rescues;
   st.time += info.time || 0;
-  const report = { xp: 0, levelBefore, levelAfter: levelBefore, newThemes: [], trophies: [], newBest: false, prevBest: p.best.classic, stars: 0, firstWin: false, firstDaily: false, medal: info.medal || null };
+  const bestKey = ['classic', 'blitz', 'zen'].includes(s.mode) ? s.mode : null;
+  const report = { xp: 0, levelBefore, levelAfter: levelBefore, newThemes: [], trophies: [], newBest: false, prevBest: bestKey ? p.best[bestKey] : 0, stars: 0, firstWin: false, firstDaily: false, medal: info.medal || null, missions: { done: [], bonus: 0 } };
+  if (bestKey && s.score > p.best[bestKey]) { report.newBest = true; p.best[bestKey] = s.score; }
   if (s.mode === 'classic') {
     st.classicGames++;
     st.classicTotal += s.score;
-    if (s.score > p.best.classic) { report.newBest = true; p.best.classic = s.score; }
-  } else if (s.mode === 'adventure' && s.status === 'won') {
+  } else if (s.mode === 'blitz') st.blitzGames++;
+  else if (s.mode === 'zen') st.zenGames++;
+  else if (s.mode === 'adventure' && s.status === 'won') {
     report.stars = starsFor(s);
     report.firstWin = !(p.adv[s.level] >= 1);
     p.adv[s.level] = Math.max(p.adv[s.level] || 0, report.stars);
@@ -177,6 +186,8 @@ export function recordGame(p, s, info = {}) {
   }
   report.xp = xpForGame(s, { firstWin: report.firstWin, firstDaily: report.firstDaily, medal: info.medal });
   p.xp += report.xp;
+  report.missions = applyMissions(p, s, info.today || dateKey(), { firstDaily: report.firstDaily });
+  report.missionXp = report.missions.done.reduce((a, m) => a + m.xp, 0) + report.missions.bonus;
   report.trophies = unlockAchievements(p, s, { newBest: report.newBest, prevBest: report.prevBest, level: levelInfo(p.xp).level });
   // Le trophée « niveau 10 » peut dépendre de l'XP des autres trophées.
   report.trophies.push(...unlockAchievements(p, s, { level: levelInfo(p.xp).level }));

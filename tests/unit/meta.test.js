@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DICTS, t, setLang } from '../../src/core/i18n.js';
+import { HYPE, areaHype, comboTier, multiHype } from '../../src/core/hype.js';
 import { defaultProfile, loadProfile, saveProfile, saveGame, loadGame, clearGame, levelInfo, xpNeed, recordGame, currentStreak, levelUnlocked, nextLevel, store } from '../../src/meta/profile.js';
 import { ACHIEVEMENTS, unlockAchievements } from '../../src/meta/achievements.js';
 import { THEMES, themeById } from '../../src/meta/themes.js';
@@ -49,10 +50,25 @@ test('icônes : toutes celles utilisées existent', () => {
 test('traductions : variables et typographie française', () => {
   setLang('fr');
   assert.equal(t('game.combo', { n: 4 }), 'Combo 4');
-  assert.equal(t('game.record'), 'Nouveau record !');
+  assert.equal(t('game.noSpace'), 'Plus de place\u00a0!');
   setLang('en');
-  assert.equal(t('game.record'), 'New best!');
+  assert.equal(t('game.noSpace'), 'No room left!');
   setLang('fr');
+});
+
+test('félicitations : toujours en anglais, paliers croissants', () => {
+  assert.equal(areaHype(3), null);
+  assert.equal(areaHype(4), 'NICE!');
+  assert.equal(areaHype(9), 'AWESOME!');
+  assert.equal(areaHype(25), 'LEGENDARY!');
+  assert.equal(comboTier(5), null);
+  assert.equal(comboTier(6), 'ON FIRE!');
+  assert.equal(comboTier(12), 'UNSTOPPABLE!');
+  assert.equal(multiHype(2), 'DOUBLE!');
+  assert.equal(multiHype(3), 'TRIPLE!');
+  assert.equal(HYPE.combo(4), 'COMBO ×4');
+  setLang('fr');
+  assert.equal(HYPE.record, 'NEW RECORD!', 'indépendant de la langue');
 });
 
 test('profil : valeurs par défaut, sauvegarde et fusion', () => {
