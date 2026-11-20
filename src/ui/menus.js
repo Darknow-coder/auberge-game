@@ -160,11 +160,13 @@ function stats(app) {
     ['stats.games', fmt(s.games)],
     ['stats.bestClassic', fmt(p.best.classic)],
     ['stats.avgClassic', fmt(s.classicGames ? s.classicTotal / s.classicGames : 0)],
-    ['stats.lines', fmt(s.lines)],
-    ['stats.prisms', fmt(s.prisms)],
+    ['stats.areas', fmt(s.areas)],
+    ['stats.light', fmt(s.light)],
+    ['stats.whites', fmt(s.whites)],
+    ['stats.maxArea', fmt(s.maxArea)],
+    ['stats.shooting', fmt(s.shooting)],
     ['stats.boardClears', fmt(s.boardClears)],
     ['stats.bestCombo', fmt(s.bestCombo)],
-    ['stats.maxLines', fmt(s.maxLines)],
     ['stats.pieces', fmt(s.pieces)],
     ['stats.powers', fmt(s.powers)],
     ['stats.stars', `${totalStars(p)} / ${LEVELS.length * 3}`],
@@ -189,8 +191,8 @@ function themePreview(theme) {
   cv.className = 'theme-canvas';
   const ctx = cv.getContext('2d');
   const size = Math.round(cell * dpr);
-  [1, 2, 3, 4, 5, STONE].forEach((k, i) => {
-    const sp = blockSprite(theme, k, size, { gem: i === 4 });
+  [1, 2, 4, STONE, 'gem', 'star'].forEach((k, i) => {
+    const sp = blockSprite(theme, k, size);
     const pad = (sp.width - size) / 2;
     ctx.drawImage(sp, i * size - pad, (cv.height - size) / 2 - pad);
   });

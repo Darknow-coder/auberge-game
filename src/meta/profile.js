@@ -31,7 +31,7 @@ export function defaultProfile() {
     theme: 'nuit',
     settings: { sfx: true, music: true, vibrate: true, symbols: false, motion: false, lang: null },
     best: { classic: 0 },
-    stats: { games: 0, classicGames: 0, classicTotal: 0, lines: 0, prisms: 0, boardClears: 0, bestCombo: 0, maxLines: 0, pieces: 0, powers: 0, rescues: 0, time: 0 },
+    stats: { games: 0, classicGames: 0, classicTotal: 0, areas: 0, light: 0, whites: 0, maxArea: 0, multi: 0, shooting: 0, boardClears: 0, bestCombo: 0, pieces: 0, powers: 0, rescues: 0, time: 0 },
     ach: {},
     adv: {},
     daily: { days: {}, streak: 0, bestStreak: 0, last: null },
@@ -75,7 +75,7 @@ export function clearGame(slot) { store.remove(SAVE_PREFIX + slot); }
 export function loadGame(slot) {
   try {
     const s = JSON.parse(store.get(SAVE_PREFIX + slot) || 'null');
-    if (s && s.v === 1 && s.board && Array.isArray(s.tray) && (s.status === 'play' || s.status === 'stuck')) return s;
+    if (s && s.v === 3 && s.board && s.board.o && Array.isArray(s.tray) && (s.status === 'play' || s.status === 'stuck')) return s;
   } catch { /* sauvegarde illisible */ }
   return null;
 }
@@ -151,11 +151,14 @@ export function recordGame(p, s, info = {}) {
   // XP des trophées déjà gagnés pendant la partie : comptée dans la progression de cette partie.
   const levelBefore = levelInfo(p.xp - (info.liveXp || 0)).level;
   st.games++;
-  st.lines += g.lines;
-  st.prisms += g.pure;
+  st.areas += g.areas;
+  st.light += g.light;
+  st.whites += g.whites;
+  st.shooting += g.stars;
+  st.maxArea = Math.max(st.maxArea, g.maxArea);
+  st.multi = Math.max(st.multi, g.multi);
   st.boardClears += g.boardClears;
   st.bestCombo = Math.max(st.bestCombo, g.maxCombo);
-  st.maxLines = Math.max(st.maxLines, g.maxLines);
   st.pieces += g.placed;
   st.powers += g.powersUsed;
   st.rescues += g.rescues;

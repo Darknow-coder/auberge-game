@@ -35,7 +35,7 @@ test('traductions : toutes les clés utilisées existent', () => {
   for (const th of THEMES) assert.ok(`theme.${th.id}` in DICTS.fr);
   for (const w of WORLDS) { assert.ok(`world.${w.id}` in DICTS.fr); assert.ok(`world.${w.id}.sub` in DICTS.fr); }
   for (const k of ['rotate', 'bomb', 'reroll']) assert.ok(`game.power.${k}` in DICTS.fr);
-  for (const g of ['score', 'lines', 'gems', 'stones', 'pure']) assert.ok(`goal.${g}` in DICTS.fr);
+  for (const g of ['score', 'areas', 'light', 'whites', 'big', 'gems', 'stones']) assert.ok(`goal.${g}` in DICTS.fr);
 });
 
 test('icônes : toutes celles utilisées existent', () => {
@@ -59,13 +59,13 @@ test('profil : valeurs par défaut, sauvegarde et fusion', () => {
   const p = loadProfile();
   assert.deepEqual(p, defaultProfile());
   p.xp = 500;
-  p.ach.first_line = 1;
+  p.ach.first_area = 1;
   p.adv[3] = 2;
   saveProfile(p);
   const q = loadProfile();
   assert.equal(q.xp, 500);
   assert.equal(q.adv[3], 2);
-  assert.ok(q.ach.first_line);
+  assert.ok(q.ach.first_area);
   // Une ancienne sauvegarde incomplète reçoit les champs manquants.
   store.set('prisme.profile.v1', JSON.stringify({ xp: 42, settings: { sfx: false } }));
   const r = loadProfile();
@@ -95,7 +95,7 @@ test('niveaux d\'expérience', () => {
   // Tous les thèmes sont atteignables et le premier est gratuit.
   assert.equal(THEMES[0].level, 1);
   assert.equal(themeById('inconnu').id, THEMES[0].id);
-  for (const th of THEMES) assert.equal(th.colors.length, 5);
+  for (const th of THEMES) for (const m of [1, 2, 3, 4, 5, 6, 7]) assert.match(th.lights[m], /^#[0-9a-f]{6}$/i);
 });
 
 test('fin de partie classique : record, stats, XP, trophées', () => {
@@ -105,10 +105,11 @@ test('fin de partie classique : record, stats, XP, trophées', () => {
   assert.ok(r.newBest);
   assert.equal(p.best.classic, s.score);
   assert.equal(p.stats.games, 1);
-  assert.equal(p.stats.lines, s.stats.lines);
+  assert.equal(p.stats.areas, s.stats.areas);
+  assert.equal(p.stats.light, s.stats.light);
   assert.ok(r.xp > 10);
-  assert.ok(p.ach.first_line);
-  assert.ok(r.trophies.some((a) => a.id === 'first_line'));
+  assert.ok(p.ach.first_area);
+  assert.ok(r.trophies.some((a) => a.id === 'first_area'));
   assert.ok(r.levelAfter >= r.levelBefore);
   // Deuxième partie moins bonne : pas de record.
   const s2 = newGame({ mode: 'classic', seed: 13 });
@@ -163,8 +164,8 @@ test('trophées : identifiants uniques, déblocage unique', () => {
   const ids = ACHIEVEMENTS.map((a) => a.id);
   assert.equal(new Set(ids).size, ids.length);
   const p = defaultProfile();
-  p.stats.lines = 600;
+  p.stats.light = 600;
   const got = unlockAchievements(p, null, null);
-  assert.ok(got.some((a) => a.id === 'lines500'));
+  assert.ok(got.some((a) => a.id === 'light500'));
   assert.equal(unlockAchievements(p, null, null).length, 0);
 });

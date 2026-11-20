@@ -11,19 +11,16 @@ test('aventure : 60 niveaux bien formés', () => {
   assert.equal(LEVELS.length, 60);
   assert.equal(WORLDS.at(-1).to, 60);
   for (const L of LEVELS) {
-    assert.equal(L.rows.length, 8);
-    for (const r of L.rows) assert.match(r, /^[.1-5#a-e]{8}$/);
+    assert.equal(L.rows.length, B.ROWS);
+    for (const r of L.rows) assert.match(r, /^[.rgb#o]{8}$/);
     const b = B.boardFromRows(L.rows);
-    const full = B.fullLines(b.c);
-    assert.equal(full.rows.length + full.cols.length, 0, `niveau ${L.n} : aucune ligne pleine au départ`);
-    assert.ok(L.moves >= 8 && L.moves <= 40);
+    assert.equal(B.enclosures(b.c).length, 0, `niveau ${L.n} : aucun enclos déjà fermé au départ`);
+    assert.ok(L.moves >= 4 && L.moves <= 40);
     for (const g of L.goals) {
-      assert.ok(['score', 'lines', 'gems', 'stones', 'pure'].includes(g.type));
+      assert.ok(['score', 'areas', 'light', 'whites', 'big', 'gems', 'stones'].includes(g.type));
       if (g.type === 'stones') assert.ok(b.c.some((v) => v === B.STONE), `niveau ${L.n} : des pierres à briser`);
-      if (g.type === 'gems') {
-        const onBoard = b.g.filter(Boolean).length;
-        assert.ok(onBoard > 0 && (onBoard >= g.target || L.gemRate > 0), `niveau ${L.n} : assez de gemmes`);
-      }
+      if (g.type === 'gems') assert.ok(b.o.filter((v) => v === B.GEM).length >= g.target, `niveau ${L.n} : assez de gemmes`);
+      if (g.type === 'big') assert.ok(g.target <= 16);
     }
     assert.equal(worldOf(L.n).id, Math.ceil(L.n / 10));
   }
@@ -77,7 +74,7 @@ test('indice : le meilleur coup est toujours valide', () => {
   for (let i = 0; i < 20; i++) {
     const m = bestMove(s);
     assert.ok(m);
-    assert.ok(B.canPlace(s.board.c, SHAPES[s.tray[m.ti].k], m.x, m.y));
+    assert.ok(B.canPlace(s.board, SHAPES[s.tray[m.ti].k], m.x, m.y));
     autoplay(s, { maxMoves: 1 });
   }
 });

@@ -4,14 +4,15 @@ import { h, $, tweenNumber, vibrate } from './dom.js';
 import { icon } from './icons.js';
 import { t, fmt, getLang } from '../core/i18n.js';
 import { SHAPES } from '../game/pieces.js';
-import { N } from '../game/board.js';
+import { COLS, ROWS } from '../game/board.js';
 import { place, usePower, giveUp, trayFits, goalProgress, gaugeMax, comboMult, COMBO_GRACE, TUTORIAL } from '../game/engine.js';
 import { bestMove } from '../game/bot.js';
 import { unlockAchievements } from '../meta/achievements.js';
 import { clearSpriteCache } from '../render/blocks.js';
+import { BOARD_RATIO } from '../render/renderer.js';
 
 const POWERS = ['rotate', 'bomb', 'reroll'];
-const GOAL_ICON = { score: 'star', lines: 'lines', gems: 'gem', stones: 'stone', pure: 'prism' };
+export const GOAL_ICON = { score: 'star', areas: 'ring', light: 'sun', whites: 'prism', big: 'expand', gems: 'gem', stones: 'stone' };
 
 export class GameScreen {
   constructor(app) {
@@ -71,20 +72,21 @@ export class GameScreen {
     const el = this.el;
     const W = window.innerWidth, H = window.innerHeight;
     // Paysage peu haut (téléphone tourné, petite fenêtre) : infos à gauche, pièces à droite.
-    const landscape = W > H * 1.15 && H < 640;
+    const landscape = W > H * 1.25 && H < 900;
     el.classList.toggle('landscape', landscape);
     let size;
     if (landscape) {
-      size = Math.floor(Math.max(180, Math.min(H - 24, (W - 250) / 1.42, 540)));
+      size = Math.floor(Math.max(170, Math.min((H - 24) / BOARD_RATIO, (W - 250) / 1.42, 520)));
     } else {
       const hud = $('.hud', el).offsetHeight;
       const status = $('.status-row', el).offsetHeight;
       const powers = this.s.usePowers ? $('#powers', el).offsetHeight : 0;
       const avail = el.clientHeight - hud - status - powers - 28;
-      size = Math.floor(Math.max(200, Math.min(el.clientWidth - 28, avail / 1.4, 540)));
+      size = Math.floor(Math.max(190, Math.min(el.clientWidth - 28, avail / (BOARD_RATIO + 0.395), 500)));
     }
     if (size !== this.lastSize) { this.lastSize = size; clearSpriteCache(); }
     el.style.setProperty('--board', `${size}px`);
+    el.style.setProperty('--board-h', `${Math.round(size * BOARD_RATIO)}px`);
     this.view.resize();
     this.view.layout($('#board-slot', el), $('#tray-slot', el));
     this.placeBanner();
@@ -204,7 +206,7 @@ export class GameScreen {
     combo.classList.toggle('hot', s.combo >= 6);
     if (on) {
       $('.combo-t', combo).textContent = `${t('game.combo', { n: s.combo })} · ×${comboMult(s.combo).toLocaleString(getLang())}`;
-      const left = COMBO_GRACE - s.sinceClear;
+      const left = COMBO_GRACE - s.sinceEnclose;
       $('.combo-dots', combo).innerHTML = Array.from({ length: COMBO_GRACE }, (_, i) => `<i class="${i < left ? 'on' : ''}"></i>`).join('');
     }
     // Pouvoirs
@@ -319,7 +321,7 @@ export class GameScreen {
       v.drag.y = e.clientY - v.drag.offY;
       v.updateGhost();
       const after = v.drag.ghost && `${v.drag.ghost.x},${v.drag.ghost.y}`;
-      if (after && after !== before && v.drag.ghost.set.size) { vibrate(4); this.app.sound.preview(); }
+      if (after && after !== before && v.drag.ghost.regions.length) { vibrate(4); this.app.sound.preview(); }
     } else if (v.mode === 'bomb' && this.bombPointer === e.pointerId) {
       const c = v.cellAt(e.clientX, e.clientY);
       v.bomb = c ? { x: c[0], y: c[1] } : null;
@@ -367,8 +369,8 @@ export class GameScreen {
       if (v.mode === 'rotate') { this.doPower('rotate', { ti }); return true; }
       if (s.status !== 'play') return true;
       const sh = SHAPES[s.tray[ti].k];
-      const start = this.kb && this.kb.ti !== ti ? { x: this.kb.x, y: this.kb.y } : { x: Math.floor((N - sh.w) / 2), y: Math.floor((N - sh.h) / 2) };
-      this.kb = { ti, x: Math.min(start.x, N - sh.w), y: Math.min(start.y, N - sh.h) };
+      const start = this.kb && this.kb.ti !== ti ? { x: this.kb.x, y: this.kb.y } : { x: Math.floor((COLS - sh.w) / 2), y: Math.floor((ROWS - sh.h) / 2) };
+      this.kb = { ti, x: Math.min(start.x, COLS - sh.w), y: Math.min(start.y, ROWS - sh.h) };
       this.syncKb(true);
       this.app.sound.pick();
       return true;
@@ -376,7 +378,7 @@ export class GameScreen {
     if (v.mode === 'bomb') {
       if (!v.bomb) v.bomb = { x: 3, y: 3 };
       const mv = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
-      if (mv) { v.bomb = { x: clamp(v.bomb.x + mv[0], 0, N - 1), y: clamp(v.bomb.y + mv[1], 0, N - 1) }; return true; }
+      if (mv) { v.bomb = { x: clamp(v.bomb.x + mv[0], 0, COLS - 1), y: clamp(v.bomb.y + mv[1], 0, ROWS - 1) }; return true; }
       if (k === 'Enter' || k === ' ') { this.doPower('bomb', v.bomb); return true; }
       if (k === 'Escape') { this.setMode(null); return true; }
       return false;
@@ -385,8 +387,8 @@ export class GameScreen {
       const sh = SHAPES[s.tray[this.kb.ti].k];
       const mv = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[k];
       if (mv) {
-        this.kb.x = clamp(this.kb.x + mv[0], 0, N - sh.w);
-        this.kb.y = clamp(this.kb.y + mv[1], 0, N - sh.h);
+        this.kb.x = clamp(this.kb.x + mv[0], 0, COLS - sh.w);
+        this.kb.y = clamp(this.kb.y + mv[1], 0, ROWS - sh.h);
         this.syncKb();
         return true;
       }
@@ -467,7 +469,7 @@ export class GameScreen {
   // ------------------------------------------------------------------ événements du moteur
   handle(events) {
     const app = this.app, v = this.view, s = this.s, snd = app.sound, b = v.board;
-    const center = [b.x + b.size / 2, b.y + b.size * 0.42];
+    const center = [b.x + b.w / 2, b.y + b.h * 0.4];
     for (const e of events) {
       switch (e.type) {
         case 'place':
@@ -475,34 +477,56 @@ export class GameScreen {
           snd.place(SHAPES[e.k].n);
           vibrate(8);
           break;
-        case 'clear': {
-          v.cleared(e);
-          snd.clear(e.lines, e.combo, e.pures);
-          vibrate(e.lines >= 3 ? [0, 30, 40, 30] : 18);
+        case 'enclose': {
+          v.enclosed(e);
+          const area = e.regions.reduce((a, r) => a + r.area, 0);
+          const biggest = Math.max(...e.regions.map((r) => r.area));
+          const white = e.regions.some((r) => r.white);
+          const star = e.regions.some((r) => r.star);
+          snd.enclose(area, e.combo, white, e.regions.length);
+          vibrate(area >= 9 || e.regions.length > 1 ? [0, 30, 40, 30] : 18);
           const [px, py] = v.cellXY(e.ox, e.oy);
-          v.fx.text(`+${fmt(e.points)}`, px, py - 10, { size: 22 + Math.min(14, e.lines * 3), color: '#fff', dur: 1 });
-          let y = center[1];
-          if (e.pures) {
-            v.fx.text(t(e.pures > 1 ? 'game.prism2' : 'game.prism'), center[0], y - 40, { size: 34, rainbow: true, dur: 1.5, delay: 0.05 });
-            y += 6;
-          } else if (e.lines >= 2) {
-            v.fx.text(t(`praise.${Math.min(5, e.lines)}`), center[0], y - 40, { size: 30 + e.lines * 3, color: app.theme.ui.accent, dur: 1.3 });
-          }
-          if (e.combo >= 2) v.fx.text(t('game.combo', { n: e.combo }), center[0], y + 4, { size: 26 + Math.min(14, e.combo), color: e.combo >= 6 ? '#ff8a3d' : '#fff', dur: 1.1, delay: 0.08 });
-          if (e.gems) this.flyGems(e.cleared);
+          v.fx.text(`+${fmt(e.points)}`, px, py - 10, { size: 22 + Math.min(16, Math.sqrt(area) * 4), color: '#fff', dur: 1.1 });
+          let y = center[1] - 44;
+          v.fx.fadeTexts('praise');
+          const say = (text, opts) => { v.fx.text(text, center[0], y, { dur: 1.4, tag: 'praise', ...opts }); y += 40; };
+          if (white) say(t('game.white'), { size: 34, rainbow: true, dur: 1.6 });
+          if (e.regions.length >= 2) say(t(e.regions.length >= 3 ? 'game.triple' : 'game.double'), { size: 32, color: app.theme.ui.accent });
+          else if (biggest >= 4) say(t(biggest >= 16 ? 'praise.huge' : biggest >= 9 ? 'praise.big' : 'praise.good'), { size: 28 + Math.min(14, biggest), color: app.theme.ui.accent });
+          if (star) { say(t('game.starCaught'), { size: 28, color: '#ffd36b' }); setTimeout(() => snd.starCaught(), 250); }
+          if (e.combo >= 2) say(t('game.combo', { n: e.combo }), { size: 24 + Math.min(14, e.combo), color: e.combo >= 6 ? '#ff8a3d' : '#fff', dur: 1.1 });
+          this.flyGems(e.regions);
           if (e.combo === 2) this.tip('combo', 900);
-          if (s.tutorial && s.stats.clears === 1) setTimeout(() => this.banner(t(e.pures ? 'tuto.prism' : 'tuto.cleared'), 3800, 'tip'), 500);
+          if (white) this.tip('white', 1600);
+          if (s.tutorial && s.stats.areas === e.regions.length) {
+            setTimeout(() => this.banner(t(white ? 'tuto.white' : 'tuto.enclosed'), 4000, 'tip'), 600);
+            setTimeout(() => this.banner(t('tuto.edge'), 5500, 'tip'), 5000);
+          }
           break;
         }
         case 'boardClear':
-          v.fx.text(t('game.boardClear'), center[0], center[1] + 46, { size: 40, rainbow: true, dur: 1.8, delay: 0.25 });
+          v.fx.text(t('game.boardClear'), center[0], center[1] + 90, { size: 38, rainbow: true, dur: 1.8, delay: 0.35 });
           v.fx.confetti(v.w, 70);
-          v.fx.flash(0.25);
-          setTimeout(() => snd.boardClear(), 200);
+          v.fx.flash(0.2);
+          setTimeout(() => snd.boardClear(), 300);
           break;
         case 'comboEnd':
           snd.comboEnd();
           break;
+        case 'starSpawn': {
+          const [cx, cy] = v.cellCenter(e.i);
+          v.fx.sparks(cx, cy, 18, ['#ffe27a', '#ffffff'], 0.8);
+          v.fx.ring(cx, cy, 4, b.cell * 0.9, '#ffd36b', 0.6, 3);
+          snd.starSpawn();
+          this.tip('star', 500);
+          break;
+        }
+        case 'starGone': {
+          const [cx, cy] = v.cellCenter(e.i);
+          v.fx.sparks(cx, cy, 10, ['#ffe27a'], 0.5);
+          snd.starGone();
+          break;
+        }
         case 'power': {
           const btn = this.el.querySelector(`[data-power=${e.kind}]`);
           setTimeout(() => {
@@ -522,7 +546,7 @@ export class GameScreen {
           setTimeout(() => {
             snd.record();
             v.fx.confetti(v.w, 110);
-            v.fx.text(t('game.record'), center[0], b.y + b.size * 0.2, { size: 38, color: app.theme.ui.accent, dur: 2 });
+            v.fx.text(t('game.record'), center[0], b.y + b.h * 0.18, { size: 38, color: app.theme.ui.accent, dur: 2 });
           }, 500);
           break;
         case 'stuck':
@@ -535,7 +559,6 @@ export class GameScreen {
           v.bombed(e);
           snd.bomb();
           vibrate([0, 40, 30, 60]);
-          if (e.gems) this.flyGems(e.cleared);
           break;
         case 'reroll':
           v.refill();
@@ -564,32 +587,29 @@ export class GameScreen {
       this.nextTrophyAt = at + 2300;
       setTimeout(() => {
         snd.trophy();
-        v.fx.text(t('result.trophy', { name: t(`ach.${a.id}`) }), b.x + b.size / 2, b.y + b.size * 0.1, { size: 17, color: app.theme.ui.accent, dur: 2.2, dy: 26 });
+        v.fx.text(t('result.trophy', { name: t(`ach.${a.id}`) }), b.x + b.w / 2, b.y + b.h * 0.08, { size: 17, color: app.theme.ui.accent, dur: 2.2, dy: 26 });
       }, at - performance.now());
     });
     if (s.status === 'play' || s.status === 'stuck') app.saveSession(s);
     if (got.length) app.saveProfile();
   }
 
-  flyGems(cleared) {
+  /** Les gemmes encerclées s'envolent vers l'objectif. */
+  flyGems(regions) {
     const v = this.view, b = v.board;
     const target = $('[data-goal=gems]', this.el);
-    if (!target) return;
-    const r = target.getBoundingClientRect();
-    const sp = v.sprite(1, b.cell, { gem: true });
-    let i = 0;
-    for (const c of cleared) {
-      if (!c.g) continue;
-      const [x, y] = v.cellXY(c.i % N, (c.i / N) | 0);
-      // Le sprite de gemme seule : on dessine le bloc entier, réduit.
-      v.fx.fly(sp.img, b.cell * 1.3, x + b.cell / 2, y + b.cell / 2, r.left + 14, r.top + r.height / 2, 0.15 + i * 0.08, () => {
+    const cells = regions.flatMap((r) => r.gemCells || []);
+    if (!cells.length) return;
+    const sp = v.sprite('gem', b.cell);
+    const r = target ? target.getBoundingClientRect() : null;
+    cells.forEach((i, n) => {
+      const [x, y] = v.cellCenter(i);
+      const tx = r ? r.left + 14 : x, ty = r ? r.top + r.height / 2 : y - 80;
+      v.fx.fly(sp.img, b.cell * 1.4, x, y, tx, ty, 0.2 + n * 0.08, () => {
         this.app.sound.gem();
-        target.classList.remove('bump');
-        void target.offsetWidth;
-        target.classList.add('bump');
+        if (target) { target.classList.remove('bump'); void target.offsetWidth; target.classList.add('bump'); }
       });
-      i++;
-    }
+    });
   }
 
   end(e) {
@@ -598,12 +618,12 @@ export class GameScreen {
     this.hideStuck();
     this.setMode(null, true);
     v.drag = null;
-    const cx = b.x + b.size / 2, cy = b.y + b.size / 2;
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     let delay = 1300;
     if (e.status === 'won') {
       v.fx.text(t('game.goalsDone'), cx, cy, { size: 36, rainbow: true, dur: 1.8, delay: 0.3 });
       setTimeout(() => { snd.win(); v.fx.confetti(v.w, 90); }, 300);
-      delay = 1600;
+      delay = 1700;
     } else if (e.reason === 'done') {
       v.fx.text(t('result.dailyDone'), cx, cy, { size: 34, rainbow: true, dur: 1.5, delay: 0.2 });
       setTimeout(() => snd.win(), 200);

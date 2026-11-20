@@ -10,10 +10,10 @@ import { THEMES, themeById, applyThemeCss } from './meta/themes.js';
 import { clearSpriteCache } from './render/blocks.js';
 import { GameView } from './render/renderer.js';
 import { Sound } from './audio/audio.js';
-import { GameScreen } from './ui/game.js';
+import { GameScreen, GOAL_ICON } from './ui/game.js';
 import { SCREENS } from './ui/menus.js';
 
-const GOAL_ICON = { score: 'star', lines: 'lines', gems: 'gem', stones: 'stone', pure: 'prism' };
+
 
 export class App {
   constructor() {
@@ -354,7 +354,7 @@ export class App {
 
   statRow(s) {
     const cell = (v, l) => h('div.stat', h('b', { text: v }), h('small', { text: l }));
-    return h('div.stat-row', cell(fmt(s.stats.lines), t('result.lines')), cell(s.stats.maxCombo, t('result.combo')), cell(s.stats.pure, t('result.prisms')));
+    return h('div.stat-row', cell(fmt(s.stats.areas), t('result.areas')), cell(s.stats.maxArea, t('result.biggest')), cell(s.stats.whites, t('result.whites')));
   }
 
   bigScore(score) {

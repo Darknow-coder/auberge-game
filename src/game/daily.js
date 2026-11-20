@@ -1,8 +1,8 @@
 // Défi du jour : même grille de départ et même suite de 30 pièces pour tout le monde.
 // Les seuils des médailles sont calculés en faisant jouer le joueur automatique.
-import { createRng, randInt, hashString, shuffle } from '../core/rng.js';
+import { createRng, randInt, hashString } from '../core/rng.js';
 import { dealSet } from './generator.js';
-import { COLORS, boardFromRows } from './board.js';
+import { boardFromRows } from './board.js';
 import { newGame } from './engine.js';
 import { autoplay } from './bot.js';
 
@@ -10,13 +10,13 @@ export const DAILY_PIECES = 30;
 const DAILY_DIFFICULTY = 0.35;
 
 const PATTERNS = [
-  ['........', '........', '........', '...xx...', '...xx...', '........', '........', '........'],
-  ['xx....xx', 'x......x', '........', '........', '........', '........', 'x......x', 'xx....xx'],
-  ['........', '........', '........', '........', '........', '........', 'xxxx.xxx', 'xxx.xxxx'],
-  ['x......x', '.x....x.', '........', '........', '........', '........', '.x....x.', 'x......x'],
-  ['........', '.xxxxxx.', '........', '........', '........', '........', '.xxxxxx.', '........'],
-  ['...x....', '...x....', '...x....', '........', '........', '....x...', '....x...', '....x...'],
-  ['........', '..x..x..', '........', 'x......x', 'x......x', '........', '..x..x..', '........'],
+  ['........', '........', '........', '...x....', '..x.x...', '........', '........', '........', '........'],
+  ['........', '.x....x.', '........', '........', '...xx...', '........', '........', '.x....x.', '........'],
+  ['........', '........', '..x..x..', '..x..x..', '..xxxx..', '........', '........', '........', '........'],
+  ['........', '.xx..xx.', '........', '........', '........', '........', '........', '.xx..xx.', '........'],
+  ['........', '........', '.x....x.', '..x..x..', '........', '..x..x..', '.x....x.', '........', '........'],
+  ['........', '...x....', '...x....', '........', '.xx..xx.', '........', '....x...', '....x...', '........'],
+  ['........', '........', '.x.x.x..', '........', '..x.x.x.', '........', '.x.x.x..', '........', '........'],
 ];
 
 export function dateKey(d = new Date()) {
@@ -34,17 +34,16 @@ export function keyToDate(key) {
  * ce qui évite les journées injouables. Le résultat ne dépend que de la date.
  */
 export function dailySpec(key) {
+  let last = null;
   for (let attempt = 0; attempt < 12; attempt++) {
     const rng = createRng(hashString(`prisme-daily-${key}-${attempt}`));
     const pat = PATTERNS[randInt(rng, PATTERNS.length)];
-    const colors = shuffle(rng, [1, 2, 3, 4, 5]);
-    const byRow = randInt(rng, 2) === 0;
-    const rows = pat.map((r, y) => [...r].map((ch, x) => (ch === 'x' ? String(colors[(byRow ? y : x) % COLORS]) : '.')).join(''));
-    const sim = newGame({ mode: 'classic', seed: rng.s });
+    const rows = pat.map((r) => [...r].map((ch) => (ch === 'x' ? 'rgb'[randInt(rng, 3)] : '.')).join(''));
+    const sim = newGame({ mode: 'daily-sim', seed: rng.s });
     sim.board = boardFromRows(rows);
     sim.diff = DAILY_DIFFICULTY;
     sim.usePowers = false;
-    sim.tray = dealSet(sim.board.c, sim.rng, { difficulty: DAILY_DIFFICULTY });
+    sim.tray = dealSet(sim.board, sim.rng, { difficulty: DAILY_DIFFICULTY });
     const seq = sim.tray.map((p) => ({ ...p }));
     autoplay(sim, {
       maxMoves: DAILY_PIECES,
@@ -53,11 +52,10 @@ export function dailySpec(key) {
         if (seq.length < DAILY_PIECES && ev.some((e) => e.type === 'refill')) seq.push(...sim.tray.map((p) => ({ ...p })));
       },
     });
-    if (sim.moves >= DAILY_PIECES || attempt === 11) {
-      return { key, rows, seq: seq.slice(0, DAILY_PIECES), seed: hashString(`seed-${key}`) };
-    }
+    last = { key, rows, seq: seq.slice(0, DAILY_PIECES), seed: hashString(`seed-${key}`) };
+    if (sim.moves >= DAILY_PIECES && seq.length >= DAILY_PIECES) return last;
   }
-  return null;
+  return last;
 }
 
 const round = (v, step) => Math.max(step, Math.round(v / step) * step);
@@ -81,4 +79,3 @@ export function medalFor(score, m) {
   if (score >= m.bronze) return 'bronze';
   return null;
 }
-

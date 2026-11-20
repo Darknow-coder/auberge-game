@@ -156,18 +156,21 @@ export class Sound {
     this.tone({ f: base * 3.1, dur: 0.035, gain: 0.05, type: 'triangle', rev: 0 });
   }
 
-  clear(lines, combo, pures) {
+  /** Enclos fermé : une cascade de cloches, plus longue pour une grande zone, plus aiguë avec le combo. */
+  enclose(area, combo, white, regions = 1) {
     if (!this.ready) return;
-    const root = 72;
+    const root = 67;
     const step = Math.min(combo - 1, 10);
-    const count = Math.min(2 + lines, 7);
-    for (let i = 0; i < count; i++) this.bell(midi(penta(root, step + i)), i * 0.055, 0.13);
-    this.whoosh({ dur: 0.35, from: 600, to: 5000, gain: 0.05 + lines * 0.015 });
-    if (pures) {
-      for (let i = 0; i < 9; i++) this.tone({ f: midi(penta(84, i + step)), t: 0.12 + i * 0.03, dur: 0.35, gain: 0.05, type: 'sine', rev: 0.5 });
-    }
-    if (lines >= 3) this.tone({ f: 55, f2: 40, dur: 0.5, gain: 0.25, type: 'sine', rev: 0.1 });
+    const count = Math.min(2 + Math.round(Math.sqrt(area) * 1.4) + regions, 9);
+    for (let i = 0; i < count; i++) this.bell(midi(penta(root, step + i)), i * 0.06, 0.12);
+    this.whoosh({ dur: 0.45, from: 300, to: 4000, gain: 0.04 + Math.min(0.06, area * 0.006) });
+    if (white) for (let i = 0; i < 10; i++) this.tone({ f: midi(penta(84, i + step)), t: 0.15 + i * 0.035, dur: 0.4, gain: 0.05, type: 'sine', rev: 0.5 });
+    if (area >= 9) this.tone({ f: 55, f2: 40, dur: 0.6, gain: 0.22, type: 'sine', rev: 0.1 });
   }
+
+  starSpawn() { if (this.ready) { this.bell(midi(96), 0, 0.05, 0.6); this.bell(midi(100), 0.08, 0.04, 0.6); } }
+  starCaught() { if (this.ready) [84, 88, 91, 96].forEach((m, i) => this.bell(midi(m), i * 0.07, 0.09, 1)); }
+  starGone() { if (this.ready) this.tone({ f: 1200, f2: 600, dur: 0.35, gain: 0.03, type: 'sine', rev: 0.4 }); }
 
   comboEnd() { if (this.ready) this.tone({ f: 520, f2: 330, dur: 0.25, gain: 0.05, type: 'triangle', rev: 0.2 }); }
 

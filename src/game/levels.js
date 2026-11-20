@@ -1,9 +1,9 @@
-// Mode Aventure : 60 niveaux répartis en 6 mondes. Chaque niveau part d'un motif dessiné
-// à la main, transformé (rotation, miroir) puis habillé selon le monde : blocs colorés,
-// gemmes à récolter, pierres à briser, lignes d'une seule couleur à réussir.
+// Mode Aventure : 60 niveaux répartis en 6 mondes, sur la grille 8 × 9.
+// Chaque niveau part d'un motif dessiné à la main (enclos à moitié construits, murs, cuvettes),
+// éventuellement retourné, puis habillé selon le monde : blocs colorés, pierres, gemmes.
 // Le tirage est déterministe : le niveau 12 est le même pour tout le monde.
 import { createRng, randInt, shuffle, hashString } from '../core/rng.js';
-import { N, COLORS } from './board.js';
+import { COLS, ROWS } from './board.js';
 
 export const WORLDS = [
   { id: 1, from: 1, to: 10, icon: 'spark' },
@@ -14,148 +14,132 @@ export const WORLDS = [
   { id: 6, from: 51, to: 60, icon: 'peak' },
 ];
 
+// Motifs 8 × 9 : 'x' = mur (habillé selon le niveau), 'o' = gemme, '.' = vide.
 const T = {
-  rows2: ['........', '........', '........', '........', '........', '........', 'xxxxx.xx', 'xx.xxxxx'],
-  bars: ['........', 'xxx..xxx', '........', '........', '........', '........', 'xxx..xxx', '........'],
-  stairs: ['x.......', 'xx......', 'xxx.....', 'xxxx....', '........', '........', '........', '........'],
-  corners: ['xx....xx', 'xx....xx', '........', '........', '........', '........', 'xx....xx', 'xx....xx'],
-  frame: ['xx....xx', 'x......x', '........', '........', '........', '........', 'x......x', 'xx....xx'],
-  cross: ['...xx...', '...xx...', '........', 'xx....xx', 'xx....xx', '........', '...xx...', '...xx...'],
-  diamond: ['........', '...xx...', '..x..x..', '.x....x.', '.x....x.', '..x..x..', '...xx...', '........'],
-  pillars: ['.x....x.', '.x....x.', '.x....x.', '........', '........', '.x....x.', '.x....x.', '.x....x.'],
-  heart: ['........', '.xx.xx..', 'x..x..x.', 'x.....x.', '.x...x..', '..x.x...', '...x....', '........'],
-  center: ['........', '........', '..xxxx..', '..x..x..', '..x..x..', '..xxxx..', '........', '........'],
-  U: ['........', '........', 'x......x', 'x......x', 'x......x', 'x......x', 'xxx..xxx', '........'],
-  zigzag: ['x.......', '.x......', '..x.....', '...x....', '....x...', '.....x..', '......x.', '........'],
-  checker: ['........', '.x.x.x..', '..x.x.x.', '.x.x.x..', '..x.x.x.', '.x.x.x..', '........', '........'],
-  steps: ['........', '........', '......xx', '....xxxx', '..xxxxx.', 'xxxxx...', 'xxx.....', '........'],
-  ring: ['..xxxx..', '.x....x.', 'x......x', 'x......x', 'x......x', 'x......x', '.x....x.', '..xxxx..'],
-  wave: ['........', 'xx......', '..xx....', '....xx..', '......xx', '....xx..', '..xx....', 'xx......'],
-  bowl: ['........', '........', '........', '........', 'x......x', 'xx....xx', 'xxx..xxx', 'xxxx.xxx'],
-  tower: ['...x....', '...xx...', '...xx...', '..xxx...', '..xxx...', '..xxxx..', '..xxxx..', '........'],
-  prism3: ['........', '........', '........', '........', '........', 'xxxxx...', '........', 'xxxxxx..'],
-  prismCols: ['x.x.....', 'x.x.....', 'x.x.....', 'x.x.....', 'x.......', 'x.x.....', '..x.....', '........'],
-  prismMix: ['........', 'xxxxx...', '........', '........', '.......x', '.......x', '.......x', 'xxxxxx.x'],
-  flower: ['...x....', '..xxx...', '.xx.xx..', '..xxx...', '...x....', '........', '.....xx.', '.....xx.'],
-  arrow: ['...xx...', '..xxxx..', '.xx..xx.', 'xx....xx', '...xx...', '...xx...', '...xx...', '........'],
-  maze: ['x.xxx.x.', 'x.....x.', 'x.xxx...', '..x.x.x.', 'x.x...x.', 'x.xxx.x.', 'x.......', 'x.xxxxx.'],
+  ring1: ['........', '........', '........', '...x....', '..xox...', '........', '........', '........', '........'],
+  cup: ['........', '........', '..x..x..', '..xoox..', '..xxxx..', '........', '........', '........', '........'],
+  cups2: ['........', '.x.x....', '.xox....', '.xxx.x.x', '.....xox', '.....xxx', '........', '........', '........'],
+  dots: ['........', '..x...x.', '........', '.x..x...', '......x.', '..x.....', '.....x..', '.x......', '........'],
+  frame: ['........', '.xxx.xx.', '.x....x.', '.x....x.', '........', '.x....x.', '.xx.xxx.', '........', '........'],
+  walls: ['........', '.x..x...', '.x..x..x', '.x..x..x', '.x.....x', '....x..x', '.x..x...', '.x..x...', '........'],
+  arch: ['........', '........', '..xxxx..', '.x....x.', '.x....x.', '.x....x.', '........', '........', '........'],
+  spiral: ['........', '.xxxxxx.', '.x......', '.x.xxx..', '.x.x.x..', '.x.x....', '.x.xxxxx', '.x......', '........'],
+  grid: ['........', '.x.x.x..', '........', '.x.x.x.x', '........', '..x.x.x.', '........', '.x.x.x..', '........'],
+  heart: ['........', '.xx..xx.', 'x..xx..x', 'x......x', '.x....x.', '..x..x..', '........', '........', '........'],
+  combs: ['........', '.x.x.x..', '.x.x.x..', '.xxxxxx.', '........', '..xxxxxx', '..x.x.x.', '..x.x.x.', '........'],
+  steps: ['........', '.xx.....', '..xx....', '...xx...', '....xx..', '.....xx.', '........', '........', '........'],
+  ladder: ['........', '..x..x..', '..xx.x..', '..x..x..', '..x..x..', '..x.xx..', '..x..x..', '........', '........'],
+  bowls: ['........', '........', '.x.x.x.x', '.xxx.xxx', '........', '.x.x.x.x', '.xxx.xxx', '........', '........'],
+  maze: ['........', '.xxxx.x.', '.x....x.', '.x.xx.x.', '...x..x.', '.x.x.xx.', '.x......', '.xxx.xx.', '........'],
+  cross: ['........', '...x....', '...x....', '.xx..x..', '...x....', '...x....', '......x.', '.....x.x', '........'],
+  big: ['........', '.xxxxxx.', '.x......', '.x......', '.x......', '.x......', '.x......', '.xxxxxx.', '........'],
+  zigzag: ['........', '.x......', '..x.....', '.x.x....', '....x...', '...x.x..', '......x.', '.....x.x', '........'],
+  pond: ['........', '..xx.x..', '.x....x.', '.x....x.', '.x......', '.x......', '..xx..x.', '........', '........'],
+  basin: ['........', '........', '.x....x.', '.x....x.', '.x....x.', '.x....x.', '.xx..xx.', '........', '........'],
 };
 
-// [motif, objectifs, coups, options]
-// options : mat ('color' | 'stone' | 'mix' | 'rowColor' | 'colColor'), gems (gemmes posées),
-//           gemRate (gemmes dans les pièces), diff (difficulté des pièces), rot, mirror.
+// [motif, objectifs, pièces disponibles, options]
+// options : mat ('color' | 'stone' | 'mix' | 'red' | 'green' | 'blue' | 'rg'), gems (gemmes en plus),
+//           diff (difficulté des pièces), flip (haut ↔ bas), mirror (gauche ↔ droite).
 const g = (type, target) => ({ type, target });
 const TABLE = [
-  // Monde 1 — Premiers éclats : apprendre à faire des lignes
-  ['rows2', [g('lines', 2)], 8, { diff: 0 }],
-  ['bars', [g('score', 400)], 14, { diff: 0 }],
-  ['stairs', [g('lines', 4)], 15, { diff: 0.05 }],
-  ['corners', [g('score', 700)], 16, { diff: 0.05 }],
-  ['U', [g('lines', 6)], 18, { diff: 0.1 }],
-  ['diamond', [g('score', 1000)], 21, { diff: 0.1 }],
-  ['pillars', [g('lines', 8)], 22, { diff: 0.12 }],
-  ['center', [g('score', 1500)], 24, { diff: 0.15 }],
-  ['steps', [g('lines', 10)], 24, { diff: 0.15 }],
-  ['heart', [g('score', 2200)], 28, { diff: 0.2 }],
-  // Monde 2 — Grotte aux gemmes
-  ['rows2', [g('gems', 3)], 10, { gems: 3, diff: 0.1, rot: 2 }],
-  ['corners', [g('gems', 4)], 12, { gems: 4, diff: 0.1 }],
-  ['frame', [g('gems', 5)], 17, { gems: 5, diff: 0.12 }],
-  ['diamond', [g('gems', 6)], 22, { gems: 5, gemRate: 0.15, diff: 0.15 }],
-  ['cross', [g('gems', 6)], 18, { gems: 6, diff: 0.15 }],
-  ['pillars', [g('gems', 8)], 22, { gems: 6, gemRate: 0.12, diff: 0.18, rot: 1 }],
-  ['heart', [g('gems', 8)], 25, { gems: 6, gemRate: 0.15, diff: 0.2 }],
-  ['checker', [g('gems', 8)], 32, { gems: 7, gemRate: 0.12, diff: 0.2 }],
-  ['wave', [g('gems', 9)], 28, { gems: 6, gemRate: 0.18, diff: 0.22 }],
-  ['ring', [g('gems', 11)], 32, { gems: 9, gemRate: 0.15, diff: 0.25 }],
-  // Monde 3 — Carrière de pierre
-  ['bars', [g('stones')], 10, { mat: 'stone', diff: 0.1 }],
-  ['frame', [g('stones')], 24, { mat: 'stone', diff: 0.15 }],
-  ['center', [g('stones')], 22, { mat: 'stone', diff: 0.18 }],
-  ['zigzag', [g('stones')], 34, { mat: 'stone', diff: 0.18 }],
-  ['diamond', [g('stones')], 28, { mat: 'stone', diff: 0.2 }],
-  ['U', [g('stones')], 24, { mat: 'stone', diff: 0.2 }],
-  ['stairs', [g('stones'), g('lines', 8)], 22, { mat: 'stone', diff: 0.22, mirror: true }],
-  ['corners', [g('stones')], 20, { mat: 'stone', diff: 0.25 }],
-  ['bowl', [g('stones')], 20, { mat: 'stone', diff: 0.25 }],
-  ['ring', [g('stones')], 36, { mat: 'stone', diff: 0.28 }],
-  // Monde 4 — Lac prisme : des lignes d'une seule couleur
-  ['prism3', [g('pure', 1)], 10, { mat: 'rowColor', diff: 0.1 }],
-  ['prism3', [g('pure', 1), g('lines', 4)], 16, { mat: 'rowColor', diff: 0.12, rot: 1 }],
-  ['prismCols', [g('pure', 1)], 16, { mat: 'colColor', diff: 0.12 }],
-  ['prismMix', [g('pure', 2)], 22, { mat: 'rowColor', diff: 0.15 }],
-  ['prism3', [g('pure', 2)], 22, { mat: 'rowColor', diff: 0.15, mirror: true }],
-  ['bars', [g('pure', 2)], 22, { mat: 'rowColor', diff: 0.18 }],
-  ['prismCols', [g('pure', 2), g('score', 1500)], 24, { mat: 'colColor', diff: 0.18, mirror: true }],
-  ['bowl', [g('pure', 2)], 24, { mat: 'rowColor', diff: 0.2 }],
-  ['prismMix', [g('pure', 3)], 32, { mat: 'rowColor', diff: 0.2, rot: 2 }],
-  ['steps', [g('pure', 3)], 36, { mat: 'rowColor', diff: 0.22 }],
-  // Monde 5 — Forêt mêlée : gemmes et pierres
-  ['flower', [g('gems', 4), g('stones')], 24, { mat: 'mix', gems: 4, diff: 0.2 }],
-  ['arrow', [g('gems', 5), g('stones')], 22, { mat: 'mix', gems: 4, gemRate: 0.1, diff: 0.22 }],
-  ['ring', [g('stones'), g('lines', 10)], 26, { mat: 'mix', diff: 0.25 }],
-  ['tower', [g('gems', 6), g('stones')], 24, { mat: 'mix', gems: 5, gemRate: 0.1, diff: 0.25 }],
-  ['heart', [g('gems', 5), g('stones')], 34, { mat: 'mix', gems: 4, gemRate: 0.12, diff: 0.25, rot: 2 }],
-  ['steps', [g('stones'), g('score', 2000)], 26, { mat: 'mix', diff: 0.28 }],
-  ['wave', [g('gems', 8), g('stones')], 32, { mat: 'mix', gems: 5, gemRate: 0.14, diff: 0.28 }],
-  ['diamond', [g('stones'), g('gems', 5)], 30, { mat: 'mix', gems: 4, gemRate: 0.1, diff: 0.3, rot: 1 }],
-  ['flower', [g('gems', 8), g('stones'), g('lines', 10)], 34, { mat: 'mix', gems: 5, gemRate: 0.12, diff: 0.3, mirror: true }],
-  ['maze', [g('stones')], 30, { mat: 'mix', diff: 0.3 }],
+  // Monde 1 — Premières lueurs : apprendre à encercler
+  ['ring1', [g('areas', 1)], 4, { diff: 0 }],
+  ['cup', [g('areas', 2)], 8, { diff: 0 }],
+  ['cups2', [g('areas', 3)], 9, { diff: 0.05 }],
+  ['dots', [g('score', 500)], 12, { diff: 0.05 }],
+  ['arch', [g('big', 4)], 10, { diff: 0.05 }],
+  ['frame', [g('light', 10)], 14, { diff: 0.1 }],
+  ['walls', [g('areas', 6)], 14, { diff: 0.1 }],
+  ['spiral', [g('score', 2000)], 16, { diff: 0.12 }],
+  ['grid', [g('light', 15)], 20, { diff: 0.15 }],
+  ['basin', [g('big', 8)], 12, { diff: 0.1 }],
+  // Monde 2 — Grotte aux gemmes : encercler les gemmes
+  ['cup', [g('gems', 2)], 6, { diff: 0.05, flip: true }],
+  ['cups2', [g('gems', 2)], 9, { diff: 0.08, mirror: true }],
+  ['dots', [g('gems', 3)], 12, { gems: 3, diff: 0.1 }],
+  ['frame', [g('gems', 4)], 15, { gems: 4, diff: 0.1 }],
+  ['bowls', [g('gems', 4)], 16, { gems: 4, diff: 0.12 }],
+  ['bowls', [g('gems', 4)], 18, { gems: 4, diff: 0.12, flip: true }],
+  ['heart', [g('gems', 5)], 18, { gems: 5, diff: 0.15, flip: true }],
+  ['grid', [g('gems', 5)], 20, { gems: 5, diff: 0.15 }],
+  ['ladder', [g('gems', 5)], 22, { gems: 5, diff: 0.18 }],
+  ['maze', [g('gems', 7)], 24, { gems: 7, diff: 0.2 }],
+  // Monde 3 — Carrière de pierre : les pierres servent de murs et se brisent avec l'enclos
+  ['cup', [g('stones')], 6, { mat: 'stone', diff: 0.1 }],
+  ['arch', [g('stones')], 10, { mat: 'stone', diff: 0.1, flip: true }],
+  ['cups2', [g('stones')], 10, { mat: 'stone', diff: 0.12 }],
+  ['steps', [g('stones')], 14, { mat: 'stone', diff: 0.15 }],
+  ['bowls', [g('stones')], 14, { mat: 'stone', diff: 0.15 }],
+  ['dots', [g('stones')], 20, { mat: 'stone', diff: 0.12 }],
+  ['frame', [g('stones')], 18, { mat: 'stone', diff: 0.2 }],
+  ['ladder', [g('stones')], 18, { mat: 'stone', diff: 0.2, mirror: true }],
+  ['walls', [g('stones')], 24, { mat: 'stone', diff: 0.22 }],
+  ['combs', [g('stones')], 22, { mat: 'stone', diff: 0.25 }],
+  // Monde 4 — Lumière blanche : mélanger rouge, vert et bleu dans une même enceinte
+  ['cup', [g('whites', 1)], 8, { mat: 'rg', diff: 0.1 }],
+  ['arch', [g('whites', 1)], 10, { mat: 'red', diff: 0.1 }],
+  ['cups2', [g('whites', 2)], 12, { mat: 'blue', diff: 0.12 }],
+  ['dots', [g('whites', 2)], 14, { mat: 'color', diff: 0.12 }],
+  ['frame', [g('whites', 2), g('light', 10)], 16, { mat: 'green', diff: 0.15 }],
+  ['bowls', [g('whites', 3)], 16, { mat: 'rg', diff: 0.15 }],
+  ['heart', [g('whites', 3)], 20, { mat: 'red', diff: 0.18 }],
+  ['grid', [g('whites', 3), g('score', 1500)], 20, { mat: 'color', diff: 0.18 }],
+  ['ladder', [g('whites', 4)], 22, { mat: 'blue', diff: 0.2 }],
+  ['pond', [g('whites', 4), g('big', 8)], 24, { mat: 'color', diff: 0.2 }],
+  // Monde 5 — Forêt mêlée : gemmes, pierres et grands enclos
+  ['bowls', [g('gems', 3), g('stones')], 16, { mat: 'mix', gems: 3, diff: 0.2 }],
+  ['pond', [g('big', 10)], 14, { mat: 'color', diff: 0.2 }],
+  ['frame', [g('gems', 4), g('stones')], 20, { mat: 'mix', gems: 4, diff: 0.22 }],
+  ['zigzag', [g('light', 18)], 20, { diff: 0.22 }],
+  ['ladder', [g('stones'), g('whites', 2)], 18, { mat: 'mix', diff: 0.25 }],
+  ['heart', [g('gems', 4), g('big', 5)], 20, { gems: 4, diff: 0.25 }],
+  ['maze', [g('stones'), g('gems', 4)], 24, { mat: 'mix', gems: 4, diff: 0.25 }],
+  ['basin', [g('big', 12)], 16, { mat: 'color', diff: 0.25, flip: true }],
+  ['combs', [g('stones'), g('light', 16)], 24, { mat: 'mix', diff: 0.28 }],
+  ['grid', [g('gems', 5), g('whites', 3)], 26, { gems: 5, diff: 0.3 }],
   // Monde 6 — Le Sommet
-  ['ring', [g('score', 3000)], 26, { diff: 0.45 }],
-  ['tower', [g('stones'), g('pure', 1)], 22, { mat: 'stone', diff: 0.4 }],
-  ['arrow', [g('gems', 8), g('score', 2000)], 28, { gems: 6, gemRate: 0.12, diff: 0.42, rot: 2 }],
-  ['maze', [g('stones'), g('lines', 12)], 30, { mat: 'stone', diff: 0.42 }],
-  ['prismMix', [g('pure', 3), g('score', 2500)], 28, { mat: 'rowColor', diff: 0.42 }],
-  ['bowl', [g('stones'), g('gems', 6)], 22, { mat: 'mix', gems: 5, gemRate: 0.12, diff: 0.45 }],
-  ['flower', [g('lines', 14)], 30, { diff: 0.5 }],
-  ['steps', [g('stones'), g('pure', 2)], 26, { mat: 'mix', diff: 0.5, mirror: true }],
-  ['cross', [g('gems', 10), g('stones'), g('score', 2500)], 32, { mat: 'mix', gems: 6, gemRate: 0.15, diff: 0.5 }],
-  ['heart', [g('score', 4500)], 38, { diff: 0.55 }],
+  ['spiral', [g('score', 4000)], 24, { diff: 0.4 }],
+  ['walls', [g('stones'), g('big', 6)], 24, { mat: 'stone', diff: 0.4 }],
+  ['dots', [g('gems', 5), g('score', 2500)], 24, { gems: 5, diff: 0.42 }],
+  ['maze', [g('stones'), g('whites', 3)], 24, { mat: 'mix', diff: 0.42 }],
+  ['big', [g('big', 12), g('whites', 1)], 18, { mat: 'red', diff: 0.42 }],
+  ['bowls', [g('gems', 5), g('stones'), g('areas', 10)], 26, { mat: 'mix', gems: 5, diff: 0.45 }],
+  ['zigzag', [g('light', 22)], 26, { diff: 0.45 }],
+  ['combs', [g('stones'), g('gems', 4)], 26, { mat: 'stone', gems: 4, diff: 0.48 }],
+  ['heart', [g('whites', 4), g('big', 7)], 26, { mat: 'color', diff: 0.5 }],
+  ['cross', [g('score', 5000)], 30, { diff: 0.55 }],
 ];
 
-const rotate = (rows) => rows.map((_, y) => rows.map((r) => r[y]).reverse().join(''));
+const flipV = (rows) => rows.slice().reverse();
 const mirror = (rows) => rows.map((r) => [...r].reverse().join(''));
 
-function transform(rows, opt) {
-  let out = rows.slice();
-  for (let i = 0; i < (opt.rot || 0); i++) out = rotate(out);
-  if (opt.mirror) out = mirror(out);
-  return out;
-}
-
 function buildLevel(n, [tpl, goals, moves, opt]) {
-  const rng = createRng(hashString(`prisme-level-${n}`));
-  const shape = transform(T[tpl], opt);
+  const rng = createRng(hashString(`prisme-enclos-${n}`));
+  let shape = T[tpl].slice();
+  if (opt.flip) shape = flipV(shape);
+  if (opt.mirror) shape = mirror(shape);
   const mat = opt.mat || 'color';
   const grid = shape.map((r) => [...r]);
-  const lineColor = [];
-  const order = shuffle(rng, [1, 2, 3, 4, 5]);
-  for (let k = 0; k < N; k++) lineColor.push(order[k % COLORS]);
-  const colored = [];
+  const pick = { red: 'r', green: 'g', blue: 'b' };
   let alt = 0;
-  for (let y = 0; y < N; y++)
-    for (let x = 0; x < N; x++) {
+  for (let y = 0; y < ROWS; y++)
+    for (let x = 0; x < COLS; x++) {
       if (grid[y][x] !== 'x') continue;
       let v;
       if (mat === 'stone') v = '#';
-      else if (mat === 'mix') v = (alt++ % 2 === 0) ? '#' : String(1 + randInt(rng, COLORS));
-      else if (mat === 'rowColor') v = String(lineColor[y]);
-      else if (mat === 'colColor') v = String(lineColor[x]);
-      else v = String(1 + randInt(rng, COLORS));
+      else if (mat === 'mix') v = alt++ % 2 === 0 ? '#' : 'rgb'[randInt(rng, 3)];
+      else if (mat in pick) v = pick[mat];
+      else if (mat === 'rg') v = 'rg'[randInt(rng, 2)];
+      else v = 'rgb'[randInt(rng, 3)];
       grid[y][x] = v;
-      if (v !== '#') colored.push([x, y]);
     }
-  shuffle(rng, colored);
-  for (const [x, y] of colored.slice(0, opt.gems || 0)) grid[y][x] = String.fromCharCode(96 + +grid[y][x]);
-  return {
-    n,
-    rows: grid.map((r) => r.join('')),
-    goals: goals.map((x) => ({ ...x })),
-    moves,
-    gemRate: opt.gemRate || 0,
-    diff: opt.diff ?? 0.2,
-  };
+  // Gemmes supplémentaires sur des cases intérieures vides.
+  const spots = [];
+  for (let y = 1; y < ROWS - 1; y++) for (let x = 1; x < COLS - 1; x++) if (grid[y][x] === '.') spots.push([x, y]);
+  shuffle(rng, spots);
+  for (const [x, y] of spots.slice(0, opt.gems || 0)) grid[y][x] = 'o';
+  return { n, rows: grid.map((r) => r.join('')), goals: goals.map((x) => ({ ...x })), moves, diff: opt.diff ?? 0.2 };
 }
 
 export const LEVELS = TABLE.map((row, i) => buildLevel(i + 1, row));

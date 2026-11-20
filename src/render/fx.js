@@ -50,6 +50,14 @@ export class Fx {
     }
   }
 
+  /** Lumière qui s'élève doucement (zones illuminées). */
+  rise(x, y, colors, n, size) {
+    if (this.reduced) n = 1;
+    for (let i = 0; i < n; i++) {
+      this.parts.push({ k: 'mote', x: x + rand(-size * 0.35, size * 0.35), y: y + rand(-size * 0.3, size * 0.3), vx: rand(-12, 12), vy: rand(-90, -40), g: -20, life: 0, max: rand(0.7, 1.3), size: rand(size * 0.06, size * 0.13), color: colors[i % colors.length], ph: rand(0, 6) });
+    }
+  }
+
   confetti(w, n = 90) {
     if (this.reduced) n = 25;
     for (let i = 0; i < n; i++) {
@@ -75,7 +83,12 @@ export class Fx {
 
   /** opts : size, color, rainbow, dur, dy (montée), stroke */
   text(text, x, y, opts = {}) {
-    this.texts.push({ text, x, y, t: -(opts.delay || 0), size: opts.size || 28, color: opts.color || '#fff', rainbow: !!opts.rainbow, dur: opts.dur || 1.1, dy: opts.dy ?? 40, weight: opts.weight || 700 });
+    this.texts.push({ text, x, y, t: -(opts.delay || 0), size: opts.size || 28, color: opts.color || '#fff', rainbow: !!opts.rainbow, dur: opts.dur || 1.1, dy: opts.dy ?? 40, weight: opts.weight || 700, tag: opts.tag || null });
+  }
+
+  /** Fait disparaître rapidement les textes d'une catégorie (pour qu'ils ne s'empilent pas). */
+  fadeTexts(tag) {
+    for (const o of this.texts) if (o.tag === tag && o.t < o.dur - 0.15) o.t = Math.max(o.t, o.dur - 0.15);
   }
 
   update(dt) {
@@ -177,6 +190,17 @@ export class Fx {
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size * (1 - k * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      } else if (p.k === 'mote') {
+        ctx.globalCompositeOperation = 'lighter';
+        const r = p.size * (1 + k);
+        const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.2);
+        gr.addColorStop(0, p.color);
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(p.x + Math.sin(p.life * 5 + p.ph) * 4, p.y, r * 2.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
       } else {

@@ -1,119 +1,162 @@
-// Grille 8×8. `c[i]` : 0 = vide, 1..5 = couleur, STONE = pierre.
-// `g[i]` : 1 si la case contient une gemme (mode Aventure).
+// Grille de jeu : 8 colonnes × 9 lignes.
+// `c[i]` : 0 = vide, 1 / 2 / 4 = bloc de lumière rouge / verte / bleue, STONE = pierre.
+// `o[i]` : objet posé sur une case VIDE (gemme en Aventure, étoile filante en Classique).
+//          Une case qui porte un objet ne peut pas recevoir de pièce : il faut l'encercler.
+//
+// Règle centrale : une zone de cases vides qui n'est plus reliée au bord de la grille est
+// « encerclée ». Elle s'illumine, et toutes les pièces qui l'entourent (y compris en
+// diagonale) disparaissent. Le bord est ouvert : la lumière s'échappe par les côtés.
 import { SHAPES } from './pieces.js';
 
-export const N = 8;
-export const CELLS = N * N;
-export const COLORS = 5;
-export const STONE = 9;
+export const COLS = 8;
+export const ROWS = 9;
+export const CELLS = COLS * ROWS;
+export const R = 1, G = 2, B = 4, WHITE = 7, STONE = 8;
+export const COLORS = [R, G, B];
+export const GEM = 1, STAR = 2;
+
+export const bits = (m) => (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1);
+export const idx = (x, y) => y * COLS + x;
+export const isEdge = (i) => { const x = i % COLS, y = (i / COLS) | 0; return x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1; };
 
 export function createBoard() {
-  return { c: new Array(CELLS).fill(0), g: new Array(CELLS).fill(0) };
+  return { c: new Array(CELLS).fill(0), o: new Array(CELLS).fill(0) };
 }
 
 export function cloneBoard(b) {
-  return { c: b.c.slice(), g: b.g.slice() };
+  return { c: b.c.slice(), o: b.o.slice() };
 }
 
-export const idx = (x, y) => y * N + x;
-
-export function canPlace(c, shape, x, y) {
-  if (x < 0 || y < 0 || x + shape.w > N || y + shape.h > N) return false;
-  for (const [dx, dy] of shape.cells) if (c[(y + dy) * N + x + dx]) return false;
+export function canPlace(b, shape, x, y) {
+  if (x < 0 || y < 0 || x + shape.w > COLS || y + shape.h > ROWS) return false;
+  for (const [dx, dy] of shape.cells) {
+    const i = (y + dy) * COLS + x + dx;
+    if (b.c[i] || b.o[i]) return false;
+  }
   return true;
 }
 
-/** La forme rentre-t-elle quelque part ? */
-export function fits(c, shape) {
-  for (let y = 0; y + shape.h <= N; y++)
-    for (let x = 0; x + shape.w <= N; x++) if (canPlace(c, shape, x, y)) return true;
+export function fits(b, shape) {
+  for (let y = 0; y + shape.h <= ROWS; y++)
+    for (let x = 0; x + shape.w <= COLS; x++) if (canPlace(b, shape, x, y)) return true;
   return false;
 }
 
-export function positions(c, shape) {
+export function positions(b, shape) {
   const out = [];
-  for (let y = 0; y + shape.h <= N; y++)
-    for (let x = 0; x + shape.w <= N; x++) if (canPlace(c, shape, x, y)) out.push([x, y]);
+  for (let y = 0; y + shape.h <= ROWS; y++)
+    for (let x = 0; x + shape.w <= COLS; x++) if (canPlace(b, shape, x, y)) out.push([x, y]);
   return out;
 }
 
-export function rowFull(c, y) {
-  for (let x = 0; x < N; x++) if (!c[y * N + x]) return false;
-  return true;
-}
+const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-export function colFull(c, x) {
-  for (let y = 0; y < N; y++) if (!c[y * N + x]) return false;
-  return true;
-}
-
-export function fullLines(c) {
-  const rows = [], cols = [];
-  for (let i = 0; i < N; i++) {
-    if (rowFull(c, i)) rows.push(i);
-    if (colFull(c, i)) cols.push(i);
+/** Zones de cases vides encerclées (non reliées au bord), en 4-connexité. */
+export function enclosures(c) {
+  const seen = new Uint8Array(CELLS);
+  const stack = [];
+  for (let x = 0; x < COLS; x++) for (const y of [0, ROWS - 1]) { const i = y * COLS + x; if (!c[i] && !seen[i]) { seen[i] = 1; stack.push(i); } }
+  for (let y = 1; y < ROWS - 1; y++) for (const x of [0, COLS - 1]) { const i = y * COLS + x; if (!c[i] && !seen[i]) { seen[i] = 1; stack.push(i); } }
+  while (stack.length) {
+    const i = stack.pop(), x = i % COLS, y = (i / COLS) | 0;
+    for (const [dx, dy] of D4) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+      const j = ny * COLS + nx;
+      if (!seen[j] && !c[j]) { seen[j] = 1; stack.push(j); }
+    }
   }
-  return { rows, cols };
-}
-
-/** Lignes qui seraient complétées en posant `shape` en (x, y), sans modifier la grille. */
-export function previewLines(c, shape, x, y) {
-  const set = [];
-  for (const [dx, dy] of shape.cells) {
-    const i = (y + dy) * N + x + dx;
-    if (!c[i]) { c[i] = 1; set.push(i); }
+  const regions = [];
+  for (let i = 0; i < CELLS; i++) {
+    if (c[i] || seen[i]) continue;
+    const reg = [];
+    seen[i] = 2;
+    stack.push(i);
+    while (stack.length) {
+      const k = stack.pop(), x = k % COLS, y = (k / COLS) | 0;
+      reg.push(k);
+      for (const [dx, dy] of D4) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        const j = ny * COLS + nx;
+        if (!seen[j] && !c[j]) { seen[j] = 2; stack.push(j); }
+      }
+    }
+    regions.push(reg.sort((a, b) => a - b));
   }
-  const res = fullLines(c);
-  for (const i of set) c[i] = 0;
-  return res;
+  return regions;
 }
 
-/** Une ligne est « prisme » si ses 8 cases ont la même couleur (pierres exclues). */
-export function linePure(c, isRow, k) {
-  const first = c[isRow ? k * N : k];
-  if (!first || first === STONE) return false;
-  for (let j = 1; j < N; j++) if (c[isRow ? k * N + j : j * N + k] !== first) return false;
-  return true;
+/** Blocs qui entourent une zone : voisins de ses cases, diagonales comprises. */
+export function ringOf(c, region) {
+  const set = new Set();
+  for (const k of region) {
+    const x = k % COLS, y = (k / COLS) | 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        const j = ny * COLS + nx;
+        if (c[j]) set.add(j);
+      }
+  }
+  return [...set].sort((a, b) => a - b);
 }
 
-export function lineCells(isRow, k) {
-  const out = [];
-  for (let j = 0; j < N; j++) out.push(isRow ? k * N + j : j * N + k);
-  return out;
+/** Mélange des lumières d'un anneau (rouge + vert + bleu = blanc). Les pierres n'éclairent pas. */
+export function mixOf(c, ring) {
+  let m = 0;
+  for (const j of ring) if (c[j] !== STONE) m |= c[j];
+  return m;
 }
 
-/** Pose la pièce (sans vérification) et renvoie les index occupés. */
-export function placeShape(b, shape, x, y, color, gemCell = -1) {
-  const out = [];
-  shape.cells.forEach(([dx, dy], j) => {
-    const i = (y + dy) * N + x + dx;
-    b.c[i] = color;
-    if (j === gemCell) b.g[i] = 1;
-    out.push(i);
+/** Description des zones encerclées (sans rien modifier). */
+export function findEnclosures(b) {
+  return enclosures(b.c).map((cells) => {
+    const ring = ringOf(b.c, cells);
+    const gemCells = cells.filter((k) => b.o[k] === GEM);
+    let stars = 0, stones = 0;
+    for (const k of cells) if (b.o[k] === STAR) stars++;
+    for (const j of ring) if (b.c[j] === STONE) stones++;
+    return { cells, ring, mix: mixOf(b.c, ring), gems: gemCells.length, gemCells, stars, stones };
   });
-  return out;
 }
 
-/** Vide les lignes et colonnes données. Renvoie les cases vidées (chacune une fois). */
-export function clearLines(b, rows, cols) {
-  const seen = new Set();
+/** Pose la pièce (sans vérification). Renvoie les index occupés. */
+export function placeShape(b, shape, x, y, col) {
   const out = [];
-  const take = (i) => {
-    if (seen.has(i)) return;
-    seen.add(i);
-    out.push({ i, c: b.c[i], g: b.g[i] });
-    b.c[i] = 0;
-    b.g[i] = 0;
-  };
-  for (const y of rows) for (let x = 0; x < N; x++) take(y * N + x);
-  for (const x of cols) for (let y = 0; y < N; y++) take(y * N + x);
+  for (const [dx, dy] of shape.cells) {
+    const i = (y + dy) * COLS + x + dx;
+    b.c[i] = col;
+    out.push(i);
+  }
   return out;
 }
 
-export function countFilled(c) {
-  let n = 0;
-  for (let i = 0; i < CELLS; i++) if (c[i]) n++;
-  return n;
+/**
+ * Résout les enclos : illumine les zones encerclées, retire les objets qu'elles contiennent
+ * et efface les blocs qui les entourent. Renvoie les zones et les blocs effacés.
+ */
+export function resolve(b) {
+  const regions = findEnclosures(b);
+  if (!regions.length) return { regions, cleared: [] };
+  const clear = new Set();
+  for (const r of regions) {
+    for (const j of r.ring) clear.add(j);
+    for (const k of r.cells) b.o[k] = 0;
+  }
+  const cleared = [...clear].sort((a, b2) => a - b2).map((i) => ({ i, c: b.c[i] }));
+  for (const { i } of cleared) b.c[i] = 0;
+  return { regions, cleared };
+}
+
+/** Ce que produirait une pose, sans modifier la grille (pour l'aperçu). */
+export function previewPlace(b, shape, x, y, col) {
+  const saved = [];
+  for (const [dx, dy] of shape.cells) { const i = (y + dy) * COLS + x + dx; saved.push(i, b.c[i]); b.c[i] = col; }
+  const regions = findEnclosures(b);
+  for (let j = 0; j < saved.length; j += 2) b.c[saved[j]] = saved[j + 1];
+  return regions;
 }
 
 export function isEmpty(c) {
@@ -121,18 +164,26 @@ export function isEmpty(c) {
   return true;
 }
 
+export function countBlocks(c) {
+  let n = 0;
+  for (let i = 0; i < CELLS; i++) if (c[i]) n++;
+  return n;
+}
+
 export function shapeOf(piece) {
   return SHAPES[piece.k];
 }
 
-/** Grille depuis 8 chaînes : '.' vide, '1'..'5' couleur, '#' pierre, 'a'..'e' couleur + gemme. */
+/** Grille depuis 9 chaînes de 8 caractères : '.' vide, r g b blocs, '#' pierre, 'o' gemme, '*' étoile. */
 export function boardFromRows(rows) {
   const b = createBoard();
+  const col = { r: R, g: G, b: B };
   rows.forEach((row, y) => [...row].forEach((ch, x) => {
     const i = idx(x, y);
-    if (ch >= '1' && ch <= '5') b.c[i] = +ch;
+    if (ch in col) b.c[i] = col[ch];
     else if (ch === '#') b.c[i] = STONE;
-    else if (ch >= 'a' && ch <= 'e') { b.c[i] = ch.charCodeAt(0) - 96; b.g[i] = 1; }
+    else if (ch === 'o') b.o[i] = GEM;
+    else if (ch === '*') b.o[i] = STAR;
   }));
   return b;
 }

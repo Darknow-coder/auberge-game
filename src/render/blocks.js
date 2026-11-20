@@ -1,4 +1,5 @@
-// Dessin procédural des blocs, mis en cache par (thème, couleur, taille, variante).
+// Dessin procédural des blocs de lumière (« lanternes »), des pierres, des gemmes et des
+// étoiles, mis en cache par (thème, sorte, taille, variante).
 import { STONE } from '../game/board.js';
 
 export function hexToRgb(hex) {
@@ -39,16 +40,21 @@ function makeCanvas(w, h) {
 const cache = new Map();
 export function clearSpriteCache() { cache.clear(); }
 
-/** Marge autour du bloc (pour les halos du style néon), en fraction de la taille. */
-export const PAD = 0.25;
+/** Marge autour du bloc (pour les halos), en fraction de la taille. */
+export const PAD = 0.3;
+
+/** Couleur d'une lumière (masque 1..7) dans le thème. */
+export function lightColor(theme, mask) {
+  return theme.lights[mask] || '#ffffff';
+}
 
 /**
- * Sprite d'un bloc de `size` pixels (réels). `kind` : index de couleur 1..5, STONE, ou 'gray'.
- * opts : gem (gemme incrustée), symbol (symbole daltonien).
+ * Sprite de `size` pixels (réels). `kind` : masque de couleur 1 / 2 / 4, STONE, 'gray',
+ * 'gem' (gemme seule) ou 'star' (étoile). opts.symbol : symbole daltonien sur la couleur.
  */
 export function blockSprite(theme, kind, size, opts = {}) {
   size = Math.max(4, Math.round(size));
-  const key = `${theme.id}|${kind}|${size}|${opts.gem ? 1 : 0}|${opts.symbol ? 1 : 0}`;
+  const key = `${theme.id}|${kind}|${size}|${opts.symbol ? 1 : 0}`;
   let cv = cache.get(key);
   if (cv) return cv;
   const pad = Math.ceil(size * PAD);
@@ -56,126 +62,100 @@ export function blockSprite(theme, kind, size, opts = {}) {
   const ctx = cv.getContext('2d');
   ctx.translate(pad, pad);
   if (kind === STONE) drawStone(ctx, size, theme);
+  else if (kind === 'gem') drawGem(ctx, size);
+  else if (kind === 'star') drawStar(ctx, size);
   else {
-    const color = kind === 'gray' ? (theme.dark ? '#5d5a70' : '#b8ad9e') : theme.colors[kind - 1];
-    drawBlock(ctx, size, color, theme.style);
-    if (opts.symbol && kind !== 'gray') drawSymbol(ctx, size, kind, theme.style);
+    const color = kind === 'gray' ? (theme.dark ? '#5d5a70' : '#b8ad9e') : lightColor(theme, kind);
+    drawLantern(ctx, size, color, theme.style, kind !== 'gray');
+    if (opts.symbol && kind !== 'gray') drawSymbol(ctx, size, kind);
   }
-  if (opts.gem) drawGem(ctx, size);
   cache.set(key, cv);
   return cv;
 }
 
-function drawBlock(ctx, s, c, style) {
+/** Lanterne de verre : cadre sombre teinté, cœur lumineux, halo. */
+function drawLantern(ctx, s, c, style, glow) {
   const g = s * 0.05;
   const x = g, y = g, w = s - 2 * g;
   if (style === 'neon') {
-    roundRect(ctx, x + s * 0.04, y + s * 0.04, w - s * 0.08, w - s * 0.08, s * 0.16);
-    ctx.fillStyle = mix(c, 'black', 0.72);
+    roundRect(ctx, x + s * 0.05, y + s * 0.05, w - s * 0.1, w - s * 0.1, s * 0.2);
+    ctx.fillStyle = mix(c, 'black', 0.78);
     ctx.fill();
     ctx.save();
     ctx.shadowColor = c;
-    ctx.shadowBlur = s * 0.28;
-    ctx.lineWidth = s * 0.075;
+    ctx.shadowBlur = s * 0.3;
+    ctx.lineWidth = s * 0.08;
     ctx.strokeStyle = c;
     ctx.stroke();
     ctx.restore();
-    roundRect(ctx, x + s * 0.18, y + s * 0.18, w - s * 0.36, w - s * 0.36, s * 0.08);
-    ctx.fillStyle = rgba(c, 0.35);
-    ctx.fill();
-    ctx.lineWidth = s * 0.03;
-    ctx.strokeStyle = mix(c, 'white', 0.55);
-    roundRect(ctx, x + s * 0.04, y + s * 0.04, w - s * 0.08, w - s * 0.08, s * 0.16);
-    ctx.stroke();
-    return;
-  }
-  if (style === 'flat') {
-    roundRect(ctx, x, y, w, w, s * 0.16);
-    ctx.fillStyle = mix(c, 'black', 0.2);
-    ctx.fill();
-    roundRect(ctx, x, y, w, w - s * 0.1, s * 0.16);
-    ctx.fillStyle = c;
-    ctx.fill();
-    roundRect(ctx, x + s * 0.12, y + s * 0.1, w - s * 0.24, s * 0.1, s * 0.05);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s * 0.13, 0, Math.PI * 2);
+    ctx.fillStyle = mix(c, 'white', 0.5);
     ctx.fill();
     return;
   }
-  const radius = style === 'jelly' ? s * 0.3 : s * 0.2;
-  // Corps : dégradé vertical.
-  roundRect(ctx, x, y, w, w, radius);
-  const body = ctx.createLinearGradient(0, y, 0, y + w);
-  if (style === 'glass') {
-    body.addColorStop(0, `rgba(${mixRgb(c, 'white', 0.3).join(',')},0.92)`);
-    body.addColorStop(1, rgba(c, 0.55));
-  } else {
-    body.addColorStop(0, mix(c, 'white', 0.28));
-    body.addColorStop(0.55, c);
-    body.addColorStop(1, mix(c, 'black', 0.28));
+  const r = style === 'soft' ? s * 0.32 : s * 0.24;
+  // Halo extérieur.
+  if (glow) {
+    ctx.save();
+    ctx.shadowColor = rgba(c, 0.75);
+    ctx.shadowBlur = s * 0.22;
+    roundRect(ctx, x, y, w, w, r);
+    ctx.fillStyle = mix(c, 'black', 0.5);
+    ctx.fill();
+    ctx.restore();
   }
-  ctx.fillStyle = body;
+  // Cadre : verre sombre teinté.
+  roundRect(ctx, x, y, w, w, r);
+  const frame = ctx.createLinearGradient(0, y, 0, y + w);
+  frame.addColorStop(0, mix(c, 'black', 0.25));
+  frame.addColorStop(1, mix(c, 'black', 0.6));
+  ctx.fillStyle = frame;
   ctx.fill();
-  // Biseau intérieur.
+  // Cœur lumineux.
+  const inset = s * 0.1;
+  roundRect(ctx, x + inset, y + inset, w - 2 * inset, w - 2 * inset, r * 0.7);
+  const core = ctx.createRadialGradient(s * 0.45, s * 0.4, s * 0.02, s / 2, s / 2, s * 0.5);
+  core.addColorStop(0, mix(c, 'white', 0.75));
+  core.addColorStop(0.35, mix(c, 'white', 0.25));
+  core.addColorStop(0.75, c);
+  core.addColorStop(1, mix(c, 'black', 0.2));
+  ctx.fillStyle = core;
+  ctx.fill();
+  // Reflet.
   ctx.save();
-  roundRect(ctx, x, y, w, w, radius);
+  roundRect(ctx, x + inset, y + inset, w - 2 * inset, w - 2 * inset, r * 0.7);
   ctx.clip();
-  ctx.lineWidth = s * 0.09;
-  const edge = ctx.createLinearGradient(0, y, 0, y + w);
-  edge.addColorStop(0, 'rgba(255,255,255,0.55)');
-  edge.addColorStop(0.5, 'rgba(255,255,255,0.08)');
-  edge.addColorStop(1, 'rgba(0,0,0,0.28)');
-  ctx.strokeStyle = edge;
-  roundRect(ctx, x, y, w, w, radius);
-  ctx.stroke();
-  // Reflet brillant sur la moitié haute.
-  const hl = ctx.createLinearGradient(0, y, 0, y + w * 0.55);
-  hl.addColorStop(0, `rgba(255,255,255,${style === 'glass' ? 0.5 : 0.42})`);
+  const hl = ctx.createLinearGradient(0, y + inset, 0, y + w * 0.5);
+  hl.addColorStop(0, 'rgba(255,255,255,0.45)');
   hl.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = hl;
-  if (style === 'jelly') {
-    ctx.beginPath();
-    ctx.ellipse(x + w * 0.5, y + w * 0.26, w * 0.36, w * 0.17, 0, 0, Math.PI * 2);
-    ctx.fill();
-  } else if (style === 'glass') {
-    ctx.beginPath();
-    ctx.moveTo(x, y + w * 0.62);
-    ctx.lineTo(x + w * 0.62, y);
-    ctx.lineTo(x + w * 0.9, y);
-    ctx.lineTo(x, y + w * 0.9);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.fill();
-  } else {
-    roundRect(ctx, x + w * 0.1, y + w * 0.07, w * 0.8, w * 0.38, radius * 0.7);
-    ctx.fill();
-  }
+  ctx.fillRect(x, y, w, w * 0.45);
   ctx.restore();
-  // Éclat lumineux.
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.arc(x + w * 0.22, y + w * 0.22, s * 0.045, 0, Math.PI * 2);
-  ctx.fill();
+  // Liseré clair du cadre.
+  ctx.lineWidth = Math.max(1, s * 0.03);
+  ctx.strokeStyle = rgba('#ffffff', 0.22);
+  roundRect(ctx, x + ctx.lineWidth / 2, y + ctx.lineWidth / 2, w - ctx.lineWidth, w - ctx.lineWidth, r);
+  ctx.stroke();
 }
 
 function drawStone(ctx, s, theme) {
   const g = s * 0.05;
   const x = g, y = g, w = s - 2 * g;
   const c = theme.stone;
-  roundRect(ctx, x, y, w, w, s * 0.14);
+  roundRect(ctx, x, y, w, w, s * 0.16);
   const body = ctx.createLinearGradient(0, y, 0, y + w);
-  body.addColorStop(0, mix(c, 'white', 0.18));
-  body.addColorStop(1, mix(c, 'black', 0.35));
+  body.addColorStop(0, mix(c, 'white', 0.12));
+  body.addColorStop(1, mix(c, 'black', 0.4));
   ctx.fillStyle = body;
   ctx.fill();
   ctx.save();
-  roundRect(ctx, x, y, w, w, s * 0.14);
+  roundRect(ctx, x, y, w, w, s * 0.16);
   ctx.clip();
-  // Taches de granit (positions fixes).
   const dots = [[0.25, 0.3, 0.07], [0.68, 0.22, 0.05], [0.55, 0.62, 0.08], [0.25, 0.75, 0.05], [0.8, 0.78, 0.06]];
   ctx.fillStyle = mix(c, 'black', 0.3);
-  for (const [dx, dy, r] of dots) { ctx.beginPath(); ctx.arc(x + w * dx, y + w * dy, s * r, 0, Math.PI * 2); ctx.fill(); }
-  // Fissures.
-  ctx.strokeStyle = mix(c, 'black', 0.5);
+  for (const [dx, dy, rr] of dots) { ctx.beginPath(); ctx.arc(x + w * dx, y + w * dy, s * rr, 0, Math.PI * 2); ctx.fill(); }
+  ctx.strokeStyle = mix(c, 'black', 0.55);
   ctx.lineWidth = Math.max(1, s * 0.035);
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -187,18 +167,18 @@ function drawStone(ctx, s, theme) {
   ctx.lineTo(x + w * 0.46, y + w * 0.82);
   ctx.stroke();
   ctx.lineWidth = s * 0.08;
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  roundRect(ctx, x, y, w, w, s * 0.14);
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  roundRect(ctx, x, y, w, w, s * 0.16);
   ctx.stroke();
   ctx.restore();
 }
 
+/** Gemme posée dans une case vide. */
 function drawGem(ctx, s) {
-  const cx = s / 2, cy = s / 2 + s * 0.02, r = s * 0.28;
+  const cx = s / 2, cy = s / 2 + s * 0.03, r = s * 0.3;
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.35)';
-  ctx.shadowBlur = s * 0.08;
-  ctx.shadowOffsetY = s * 0.03;
+  ctx.shadowColor = 'rgba(120, 230, 255, 0.9)';
+  ctx.shadowBlur = s * 0.25;
   ctx.beginPath();
   ctx.moveTo(cx - r, cy - r * 0.35);
   ctx.lineTo(cx - r * 0.5, cy - r * 0.85);
@@ -209,14 +189,13 @@ function drawGem(ctx, s) {
   const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
   grad.addColorStop(0, '#ffffff');
   grad.addColorStop(0.45, '#b9f3ff');
-  grad.addColorStop(1, '#4fc8ff');
+  grad.addColorStop(1, '#3fb8ff');
   ctx.fillStyle = grad;
   ctx.fill();
   ctx.restore();
-  ctx.strokeStyle = 'rgba(20,70,120,0.55)';
+  ctx.strokeStyle = 'rgba(20,70,120,0.6)';
   ctx.lineWidth = Math.max(1, s * 0.025);
   ctx.stroke();
-  // Facettes.
   ctx.beginPath();
   ctx.moveTo(cx - r, cy - r * 0.35);
   ctx.lineTo(cx + r, cy - r * 0.35);
@@ -226,31 +205,47 @@ function drawGem(ctx, s) {
   ctx.lineTo(cx + r * 0.25, cy - r * 0.35);
   ctx.lineTo(cx + r * 0.5, cy - r * 0.85);
   ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.beginPath();
-  ctx.arc(cx - r * 0.45, cy - r * 0.55, s * 0.035, 0, Math.PI * 2);
-  ctx.fill();
 }
 
-/** Symboles distincts par couleur (option daltonisme) : rond, triangle, carré, losange, étoile. */
-function drawSymbol(ctx, s, kind, style) {
-  const cx = s / 2, cy = s / 2, r = s * 0.17;
+export function starPath(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r;
+    ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
+
+/** Étoile filante (mode Classique). */
+function drawStar(ctx, s) {
   ctx.save();
-  ctx.fillStyle = style === 'flat' ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.8)';
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth = Math.max(1, s * 0.02);
+  ctx.shadowColor = 'rgba(255, 210, 90, 0.95)';
+  ctx.shadowBlur = s * 0.3;
+  starPath(ctx, s / 2, s / 2, s * 0.36);
+  const grad = ctx.createRadialGradient(s * 0.45, s * 0.42, s * 0.02, s / 2, s / 2, s * 0.4);
+  grad.addColorStop(0, '#fffbe6');
+  grad.addColorStop(0.5, '#ffe27a');
+  grad.addColorStop(1, '#ffb02e');
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+  ctx.lineWidth = Math.max(1, s * 0.025);
+  ctx.strokeStyle = 'rgba(120, 70, 0, 0.45)';
+  starPath(ctx, s / 2, s / 2, s * 0.36);
+  ctx.stroke();
+}
+
+/** Symboles par couleur (option daltonisme) : rouge = rond, vert = triangle, bleu = carré. */
+function drawSymbol(ctx, s, kind) {
+  const cx = s / 2, cy = s / 2, r = s * 0.16;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = Math.max(1, s * 0.025);
   ctx.beginPath();
   if (kind === 1) ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  else if (kind === 2) { ctx.moveTo(cx, cy - r * 1.1); ctx.lineTo(cx + r * 1.05, cy + r * 0.8); ctx.lineTo(cx - r * 1.05, cy + r * 0.8); ctx.closePath(); }
-  else if (kind === 3) ctx.rect(cx - r * 0.85, cy - r * 0.85, r * 1.7, r * 1.7);
-  else if (kind === 4) { ctx.moveTo(cx, cy - r * 1.15); ctx.lineTo(cx + r * 1.0, cy); ctx.lineTo(cx, cy + r * 1.15); ctx.lineTo(cx - r * 1.0, cy); ctx.closePath(); }
-  else {
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.5 : r * 1.15;
-      ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
-    }
-    ctx.closePath();
-  }
+  else if (kind === 2) { ctx.moveTo(cx, cy - r * 1.15); ctx.lineTo(cx + r * 1.1, cy + r * 0.85); ctx.lineTo(cx - r * 1.1, cy + r * 0.85); ctx.closePath(); }
+  else ctx.rect(cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8);
   ctx.fill();
   ctx.stroke();
   ctx.restore();

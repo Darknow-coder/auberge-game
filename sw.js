@@ -1,6 +1,6 @@
 // Service worker : réseau d'abord (toujours la dernière version en ligne), cache en secours
 // pour jouer hors ligne. Le cache est rempli au fil des requêtes et à l'installation.
-const CACHE = 'prisme-v1';
+const CACHE = 'prisme-v2';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'src/main.js', 'src/app.js',

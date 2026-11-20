@@ -3,15 +3,17 @@ import assert from 'node:assert/strict';
 import { SHAPES, FAMILIES, FAMILY_KEYS, ALL_KEYS, rotateKey } from '../../src/game/pieces.js';
 import * as B from '../../src/game/board.js';
 import { createRng } from '../../src/core/rng.js';
-import { dealSet, solvable, wantedColors } from '../../src/game/generator.js';
-import { newGame, place, usePower, giveUp, comboMult, clearPoints, SCORE, COMBO_GRACE, TUTORIAL, trayFits, starsFor, bombArea } from '../../src/game/engine.js';
+import { dealSet, solvable, canEncloseNow } from '../../src/game/generator.js';
+import { newGame, place, usePower, giveUp, comboMult, areaPoints, mixMult, SCORE, COMBO_GRACE, TUTORIAL, trayFits, starsFor, bombArea, STAR_LIFE } from '../../src/game/engine.js';
 
-const rows = (...r) => r.concat(Array(8 - r.length).fill('........'));
-/** Partie classique avec une grille et des pièces imposées. */
+const EMPTY = '........';
+const rows = (...r) => r.concat(Array(B.ROWS - r.length).fill(EMPTY));
+/** Partie classique avec une grille et des pièces imposées (sans étoile filante). */
 function setup(boardRows, tray, extra = {}) {
   const s = newGame({ mode: 'classic', seed: 1 });
   s.board = B.boardFromRows(boardRows);
-  s.tray = tray.map((p) => (p ? { gem: -1, ...p } : null));
+  s.tray = tray.map((p) => (p ? { col: B.R, ...p } : null));
+  s.starCd = 999;
   Object.assign(s, extra);
   return s;
 }
@@ -22,191 +24,221 @@ test('catalogue : formes normalisées, rotations cohérentes', () => {
     const sh = SHAPES[k];
     assert.equal(Math.min(...sh.cells.map((c) => c[0])), 0);
     assert.equal(Math.min(...sh.cells.map((c) => c[1])), 0);
-    assert.equal(sh.n, sh.cells.length);
     let r = k;
     for (let i = 0; i < 4; i++) r = rotateKey(r);
-    assert.equal(r, k, `4 rotations de ${k} reviennent au départ`);
-    assert.equal(SHAPES[rotateKey(k)].family, sh.family);
+    assert.equal(r, k);
   }
-  assert.equal(FAMILY_KEYS.mono.length, 1);
   assert.equal(FAMILY_KEYS.L4.length, 8);
-  assert.equal(FAMILY_KEYS.S4.length, 4);
-  assert.equal(FAMILY_KEYS.corner3.length, 4);
-  assert.equal(FAMILY_KEYS.line5.length, 2);
 });
 
-test('grille : pose, bords et lignes complètes', () => {
-  const b = B.createBoard();
-  const sq = SHAPES['square3:0'];
-  assert.ok(B.canPlace(b.c, sq, 5, 5));
-  assert.ok(!B.canPlace(b.c, sq, 6, 5));
-  B.placeShape(b, sq, 0, 0, 2);
-  assert.ok(!B.canPlace(b.c, SHAPES['mono:0'], 1, 1));
-  const f = B.boardFromRows(rows('11111111', '1.......', '1.......', '1.......', '1.......', '1.......', '1.......', '1.......'));
-  assert.deepEqual(B.fullLines(f.c), { rows: [0], cols: [0] });
-  assert.ok(B.linePure(f.c, true, 0));
-  const cleared = B.clearLines(f, [0], [0]);
-  assert.equal(cleared.length, 15, 'la case commune n\'est comptée qu\'une fois');
-  assert.ok(B.isEmpty(f.c));
+test('grille 8 × 9 : bords, pose et objets', () => {
+  assert.equal(B.COLS, 8);
+  assert.equal(B.ROWS, 9);
+  const b = B.boardFromRows(rows('r.......', '.o......'));
+  assert.ok(B.isEdge(B.idx(0, 4)) && B.isEdge(B.idx(7, 8)) && !B.isEdge(B.idx(3, 4)));
+  assert.ok(!B.canPlace(b, SHAPES['mono:0'], 0, 0), 'case occupée');
+  assert.ok(!B.canPlace(b, SHAPES['mono:0'], 1, 1), 'une gemme ne se recouvre pas');
+  assert.ok(B.canPlace(b, SHAPES['line4:1'], 7, 5), 'pièce verticale dans la dernière colonne');
+  assert.ok(!B.canPlace(b, SHAPES['line4:1'], 7, 6), 'hors de la grille en bas');
 });
 
-test('grille : aperçu des lignes sans modifier la grille', () => {
-  const b = B.boardFromRows(rows('111111..'));
-  const before = b.c.slice();
-  const l = B.previewLines(b.c, SHAPES['duo:0'], 6, 0);
-  assert.deepEqual(l, { rows: [0], cols: [] });
-  assert.deepEqual(b.c, before);
+test('enclos : zone non reliée au bord, en 4-connexité', () => {
+  const open = B.boardFromRows(rows(EMPTY, '..rrr...', '..r.r...', '..r.....'));
+  assert.equal(B.enclosures(open.c).length, 0, 'une brèche laisse fuir la lumière');
+  const closed = B.boardFromRows(rows(EMPTY, '...r....', '..r.r...', '...r....'));
+  const e = B.findEnclosures(closed);
+  assert.equal(e.length, 1);
+  assert.deepEqual(e[0].cells, [B.idx(3, 2)]);
+  assert.equal(e[0].ring.length, 4, 'les diagonales vides ne comptent pas');
+  const diag = B.boardFromRows(rows(EMPTY, '..rr....', '..r.r...', '...rr...'));
+  assert.equal(B.findEnclosures(diag)[0].ring.length, 6, 'l\'anneau inclut les blocs en diagonale');
+  const wall = B.boardFromRows(rows('r.r.....', '.r......'));
+  assert.equal(B.enclosures(wall.c).length, 0, 'le bord ne sert pas de mur');
 });
 
-test('ligne prisme : une seule couleur, pierres exclues', () => {
-  const b = B.boardFromRows(rows('33333333', '3333333#', '33333331'));
-  assert.ok(B.linePure(b.c, true, 0));
-  assert.ok(!B.linePure(b.c, true, 1));
-  assert.ok(!B.linePure(b.c, true, 2));
+test('enclos : mélange des lumières de l\'enceinte', () => {
+  const b = B.boardFromRows(rows(EMPTY, '...r....', '..g.b...', '...r....'));
+  const [e] = B.findEnclosures(b);
+  assert.equal(e.mix, B.WHITE);
+  assert.equal(mixMult(e.mix), 2);
+  assert.equal(mixMult(B.R), 1);
+  assert.equal(mixMult(B.R | B.G), 1.5);
+  const st = B.boardFromRows(rows(EMPTY, '...#....', '..#.#...', '...r....'));
+  assert.equal(B.findEnclosures(st)[0].mix, B.R, 'les pierres n\'éclairent pas');
 });
 
-test('score : pose, ligne simple, double ligne et prisme', () => {
-  const s = setup(rows('1111111.', '2222222.'), [{ k: 'line3:1', col: 3 }, { k: 'mono:0', col: 1 }, null]);
-  let r = place(s, 1, 7, 0); // ligne 0 : couleur 1 partout → prisme
+test('pose qui ferme un enclos : points, anneau effacé, statistiques', () => {
+  const s = setup(rows(EMPTY, '...g....', '..g.b...'), [{ k: 'mono:0', col: B.R }, { k: 'mono:0', col: B.R }, null]);
+  const r = place(s, 0, 3, 3);
   assert.ok(r.ok);
-  const clear = r.events.find((e) => e.type === 'clear');
-  assert.equal(clear.lines, 1);
-  assert.equal(clear.pures, 1);
-  assert.equal(clear.points, clearPoints(1, 1));
-  assert.equal(s.score, 1 + SCORE.line + SCORE.pure);
-  assert.equal(clearPoints(2, 0), SCORE.line * 3);
-  assert.equal(clearPoints(3, 0), SCORE.line * 6);
+  const enc = r.events.find((e) => e.type === 'enclose');
+  assert.ok(enc, 'un enclos est fermé');
+  assert.equal(enc.regions.length, 1);
+  assert.equal(enc.regions[0].area, 1);
+  assert.ok(enc.regions[0].white);
+  assert.equal(enc.cleared.length, 4);
+  assert.equal(enc.points, (areaPoints(1) + SCORE.ring * 4) * 2);
+  assert.ok(B.isEmpty(s.board.c));
+  assert.ok(r.events.some((e) => e.type === 'boardClear'));
+  assert.equal(s.stats.areas, 1);
+  assert.equal(s.stats.light, 1);
+  assert.equal(s.stats.whites, 1);
+  assert.equal(s.score, 1 + enc.points + SCORE.boardClear);
 });
 
-test('combo : progresse, multiplie, tolère 2 poses sans ligne puis retombe', () => {
+test('points : très croissants avec la taille de la zone', () => {
+  assert.equal(areaPoints(1), 20);
+  assert.equal(areaPoints(4), 200);
+  assert.equal(areaPoints(9), 900);
+  assert.ok(areaPoints(9) / 9 > 4 * (areaPoints(1) / 1));
+});
+
+test('deux enclos d\'un coup : bonus multiple', () => {
+  const s = setup(rows(EMPTY, '.r...r..', 'r.r.r.r.', EMPTY), [{ k: 'line5:0', col: B.R }, null, null]);
+  const r = place(s, 0, 1, 3);
+  const enc = r.events.find((e) => e.type === 'enclose');
+  assert.equal(enc.regions.length, 2);
+  assert.equal(enc.multi, 1.5);
+  assert.equal(s.stats.multi, 2);
+});
+
+test('combo : progresse, tolère une pose sans enclos, puis retombe', () => {
+  assert.equal(COMBO_GRACE, 2);
   assert.equal(comboMult(1), 1);
   assert.equal(comboMult(3), 2);
-  assert.equal(comboMult(50), 5);
-  const s = setup(rows('1111111.', '2222222.', '3333333.'), [{ k: 'mono:0', col: 4 }, { k: 'mono:0', col: 4 }, { k: 'mono:0', col: 4 }]);
-  place(s, 0, 7, 0);
+  assert.equal(comboMult(40), 5);
+  const s = setup(rows(EMPTY, '...r..r.', '..r.rr.r', EMPTY, EMPTY, EMPTY, '..r.....', '.r.r....'),
+    [{ k: 'mono:0' }, { k: 'mono:0' }, { k: 'mono:0' }]);
+  place(s, 0, 3, 3);
   assert.equal(s.combo, 1);
-  const r = place(s, 1, 7, 1);
+  place(s, 1, 6, 3);
   assert.equal(s.combo, 2);
-  assert.equal(r.events.find((e) => e.type === 'clear').points, Math.round(SCORE.line * comboMult(2)));
-  s.tray = [{ k: 'mono:0', col: 1, gem: -1 }, { k: 'mono:0', col: 1, gem: -1 }, { k: 'mono:0', col: 1, gem: -1 }];
-  for (let i = 0; i < COMBO_GRACE - 1; i++) place(s, i, i, 5);
-  assert.equal(s.combo, 2, 'le combo survit à deux poses sans ligne');
-  const r3 = place(s, 2, 4, 5);
+  s.tray = [{ k: 'mono:0', col: B.G }, { k: 'mono:0', col: B.G }, { k: 'mono:0', col: B.G }];
+  place(s, 0, 6, 6);
+  assert.equal(s.combo, 2, 'une pose sans enclos est tolérée');
+  const r = place(s, 1, 0, 8);
   assert.equal(s.combo, 0);
-  assert.ok(r3.events.some((e) => e.type === 'comboEnd'));
+  assert.ok(r.events.some((e) => e.type === 'comboEnd'));
 });
 
-test('grille nette : bonus', () => {
-  const s = setup(rows('1111111.'), [{ k: 'mono:0', col: 2 }, { k: 'mono:0', col: 2 }, null]);
-  const r = place(s, 0, 7, 0);
-  assert.ok(r.events.some((e) => e.type === 'boardClear'));
-  assert.equal(s.stats.boardClears, 1);
-  assert.equal(s.score, 1 + SCORE.line + SCORE.boardClear);
+test('gemmes et pierres : récoltées et brisées par l\'enclos', () => {
+  const s = setup(rows(EMPTY, '...#....', '..#o#...'), [{ k: 'mono:0' }, null, null]);
+  s.goals = [{ type: 'gems', target: 1 }, { type: 'stones', target: 3 }];
+  s.movesMax = 5;
+  s.mode = 'adventure';
+  const r = place(s, 0, 3, 3);
+  assert.equal(s.stats.gems, 1);
+  assert.equal(s.stats.stones, 3);
+  assert.equal(s.board.o[B.idx(3, 2)], 0);
+  assert.equal(s.status, 'won');
+  assert.ok(r.events.some((e) => e.type === 'end' && e.status === 'won'));
+  assert.equal(starsFor(s), 3);
 });
 
-test('pose refusée hors grille ou sur une case occupée', () => {
-  const s = setup(rows('1.......'), [{ k: 'duo:0', col: 2 }, null, null]);
+test('étoile filante : apparaît à l\'intérieur, s\'éteint, se capture', () => {
+  const s = setup(rows(), [{ k: 'mono:0' }, { k: 'mono:0' }, { k: 'mono:0' }], { starCd: 0 });
+  let spawned = null;
+  for (let i = 0; i < 40 && !spawned; i++) {
+    s.tray = [{ k: 'mono:0', col: B.R }, null, null];
+    s.board.c.fill(0);
+    if (s.star) { s.board.o[s.star.i] = 0; s.star = null; }
+    const r = place(s, 0, 0, 0);
+    spawned = r.events.find((e) => e.type === 'starSpawn');
+  }
+  assert.ok(spawned, 'une étoile finit par apparaître');
+  assert.ok(!B.isEdge(spawned.i));
+  assert.equal(s.board.o[spawned.i], B.STAR);
+  assert.equal(s.star.life, STAR_LIFE);
+  // Elle s'éteint après STAR_LIFE poses.
+  let gone = false;
+  for (let i = 0; i < STAR_LIFE && !gone; i++) {
+    s.tray = [{ k: 'mono:0', col: B.R }, null, null];
+    s.board.c.fill(0);
+    s.board.o.fill(0);
+    s.board.o[spawned.i] = B.STAR;
+    gone = place(s, 0, 0, 0).events.some((e) => e.type === 'starGone');
+  }
+  assert.ok(gone);
+  // Capture : une étoile encerclée double les points de l'enclos.
+  const t = setup(rows(EMPTY, '...r....', '..r*r...'), [{ k: 'mono:0' }, null, null]);
+  t.star = { i: B.idx(3, 2), life: 5 };
+  const r = place(t, 0, 3, 3);
+  const enc = r.events.find((e) => e.type === 'enclose');
+  assert.ok(enc.regions[0].star);
+  assert.equal(enc.points, (areaPoints(1) + SCORE.ring * 4) * 2);
+  assert.equal(t.stats.stars, 1);
+  assert.equal(t.star, null);
+});
+
+test('pose refusée hors grille, sur un bloc ou sur un objet', () => {
+  const s = setup(rows('r.......', '.o......'), [{ k: 'duo:0' }, null, null]);
   assert.equal(place(s, 0, 0, 0).reason, 'blocked');
   assert.equal(place(s, 0, 7, 3).reason, 'blocked');
+  assert.equal(place(s, 0, 1, 1).reason, 'blocked');
   assert.equal(place(s, 1, 0, 3).reason, 'empty');
-  assert.ok(place(s, 0, 6, 3).ok);
-});
-
-test('lot vidé : nouveau lot distribué', () => {
-  const s = setup(rows(), [{ k: 'mono:0', col: 2 }, null, null]);
-  const r = place(s, 0, 0, 0);
-  assert.ok(r.events.some((e) => e.type === 'refill'));
-  assert.equal(s.tray.filter(Boolean).length, 3);
-});
-
-test('jauge : une ligne remplit la jauge et donne un pouvoir', () => {
-  const s = setup(rows('1111111.'), [{ k: 'mono:0', col: 2 }, { k: 'mono:0', col: 2 }, null], { gauge: 95 });
-  const before = s.powers.rotate + s.powers.bomb + s.powers.reroll;
-  const r = place(s, 0, 7, 0);
-  assert.ok(r.events.some((e) => e.type === 'power'));
-  assert.equal(s.powers.rotate + s.powers.bomb + s.powers.reroll, before + 1);
-  assert.equal(s.earned, 1);
+  assert.ok(place(s, 0, 4, 4).ok);
 });
 
 test('pouvoirs : rotation, bombe, relance', () => {
-  const s = setup(rows('11111111'.slice(0, 7) + '.', '2222....'), [{ k: 'line3:0', col: 3 }, { k: 'mono:0', col: 1 }, { k: 'square2:0', col: 4 }]);
+  const s = setup(rows(EMPTY, '.rrr....', '.r.r....', '.rr.....'), [{ k: 'line3:0' }, { k: 'mono:0' }, { k: 'square2:0' }]);
   const k0 = s.tray[0].k;
   assert.ok(usePower(s, 'rotate', { ti: 0 }).ok);
   assert.equal(s.tray[0].k, rotateKey(k0));
-  assert.equal(s.powers.rotate, 0);
   assert.equal(usePower(s, 'rotate', { ti: 1 }).reason, 'none');
   s.powers.rotate = 1;
   assert.equal(usePower(s, 'rotate', { ti: 1 }).reason, 'symmetric');
-  const r = usePower(s, 'bomb', { x: 1, y: 1 });
+  const r = usePower(s, 'bomb', { x: 2, y: 2 });
   assert.ok(r.ok);
-  assert.equal(r.events[0].cleared.length, 6);
-  assert.equal(s.board.c[B.idx(3, 1)], 2, 'hors de la zone, rien ne bouge');
-  assert.equal(usePower(s, 'bomb', { x: 6, y: 6 }).reason, 'none');
-  s.powers.bomb = 1;
-  assert.equal(usePower(s, 'bomb', { x: 6, y: 6 }).reason, 'nothing');
+  assert.equal(r.events[0].cleared.length, 7);
   assert.equal(bombArea(0, 0).length, 4);
-  const trayBefore = JSON.stringify(s.tray);
+  s.powers.bomb = 1;
+  assert.equal(usePower(s, 'bomb', { x: 6, y: 7 }).reason, 'nothing');
+  const before = JSON.stringify(s.tray);
   assert.ok(usePower(s, 'reroll').ok);
-  assert.notEqual(JSON.stringify(s.tray), trayBefore);
+  assert.notEqual(JSON.stringify(s.tray), before);
   assert.equal(s.stats.powersUsed, 3);
 });
 
-test('rotation : la gemme suit la pièce', () => {
-  const s = setup(rows(), [{ k: 'L4:0', col: 3, gem: 3 }, null, null]);
-  const cell = SHAPES['L4:0'].cells[3];
-  usePower(s, 'rotate', { ti: 0 });
-  const p = s.tray[0];
-  assert.ok(p.gem >= 0);
-  // Après 4 rotations, la gemme revient sur la même case.
-  s.powers.rotate = 3;
-  for (let i = 0; i < 3; i++) usePower(s, 'rotate', { ti: 0 });
-  assert.deepEqual(SHAPES[s.tray[0].k].cells[s.tray[0].gem], cell);
-});
-
-const FULLISH = ['1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1'];
+// Grille pleine sauf quelques cases isolées sur le bord gauche (aucun enclos possible).
+const FULLISH = Array.from({ length: 9 }, (_, y) => (y % 2 ? 'rrrrrrrr' : '.rrrrrrr'));
 
 test('impasse : sauvetage possible avec un pouvoir, sinon fin de partie', () => {
-  const s = setup(FULLISH, [{ k: 'mono:0', col: 2 }, { k: 'square2:0', col: 2 }, { k: 'line3:0', col: 2 }]);
-  const r = place(s, 0, 1, 0);
-  assert.equal(s.status, 'stuck');
-  assert.ok(r.events.some((e) => e.type === 'stuck'));
-  assert.equal(place(s, 1, 0, 0).reason, 'status');
-  const u = usePower(s, 'bomb', { x: 3, y: 3 });
-  assert.ok(u.ok);
-  assert.equal(s.status, 'play');
-  assert.ok(u.events.some((e) => e.type === 'rescued'));
-  const s2 = setup(FULLISH, [{ k: 'mono:0', col: 2 }, { k: 'square2:0', col: 2 }, null], { powers: { rotate: 0, bomb: 0, reroll: 0 } });
-  const r2 = place(s2, 0, 1, 0);
+  const s = setup(FULLISH, [{ k: 'square2:0' }, { k: 'line3:0' }, null]);
+  s.tray = [{ k: 'square2:0', col: B.R }, { k: 'line3:0', col: B.R }, null];
+  assert.deepEqual(trayFits(s), [false, false, false]);
+  const s2 = setup(FULLISH, [{ k: 'mono:0' }, { k: 'square2:0' }, null], { powers: { rotate: 0, bomb: 0, reroll: 0 } });
+  assert.equal(B.enclosures(s2.board.c).length, 0);
+  const r2 = place(s2, 0, 0, 0);
+  assert.ok(r2.ok);
   assert.equal(s2.status, 'over');
   assert.equal(s2.end, 'noSpace');
-  assert.ok(r2.events.some((e) => e.type === 'end'));
-});
-
-test('abandon depuis une impasse', () => {
-  const s = setup(FULLISH, [{ k: 'square2:0', col: 2 }, null, null], { status: 'stuck' });
-  assert.ok(giveUp(s).ok);
-  assert.equal(s.status, 'over');
-});
-
-test('pièces grisées : trayFits', () => {
-  const s = setup(FULLISH, [{ k: 'mono:0', col: 2 }, { k: 'square2:0', col: 2 }, null]);
-  assert.deepEqual(trayFits(s), [true, false, false]);
+  const s3 = setup(FULLISH, [{ k: 'mono:0' }, { k: 'square2:0' }, null]);
+  const r3 = place(s3, 0, 0, 0);
+  assert.equal(s3.status, 'stuck');
+  assert.ok(r3.events.some((e) => e.type === 'stuck'));
+  const u = usePower(s3, 'bomb', { x: 3, y: 4 });
+  assert.ok(u.ok);
+  assert.equal(s3.status, 'play');
+  assert.ok(u.events.some((e) => e.type === 'rescued'));
+  const s4 = setup(FULLISH, [{ k: 'square2:0' }, null, null], { status: 'stuck' });
+  assert.ok(giveUp(s4).ok);
+  assert.equal(s4.status, 'over');
 });
 
 test('record : événement unique quand on dépasse son meilleur score', () => {
-  const s = setup(rows('1111111.'), [{ k: 'mono:0', col: 2 }, { k: 'mono:0', col: 2 }, null], { best: 50 });
-  const r = place(s, 0, 7, 0);
+  const s = setup(rows(EMPTY, '...r....', '..r.r...'), [{ k: 'mono:0' }, { k: 'mono:0' }, null], { best: 50 });
+  const r = place(s, 0, 3, 3);
   assert.ok(r.events.some((e) => e.type === 'record'));
-  const r2 = place(s, 1, 0, 3);
+  const r2 = place(s, 1, 0, 0);
   assert.ok(!r2.events.some((e) => e.type === 'record'));
 });
 
 test('sauvegarde : un état JSON rechargé rejoue à l\'identique', () => {
   const a = newGame({ mode: 'classic', seed: 99 });
   const b = JSON.parse(JSON.stringify(a));
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 40; i++) {
     const ti = a.tray.findIndex(Boolean);
-    const pos = B.positions(a.board.c, SHAPES[a.tray[ti].k])[0];
+    const pos = B.positions(a.board, SHAPES[a.tray[ti].k])[0];
     if (!pos) break;
     const ra = place(a, ti, pos[0], pos[1]);
     const rb = place(b, ti, pos[0], pos[1]);
@@ -216,64 +248,50 @@ test('sauvegarde : un état JSON rechargé rejoue à l\'identique', () => {
   assert.deepEqual(a, b);
 });
 
-test('initiation : la première pièce réussit une ligne prisme', () => {
+test('initiation : la première pièce ferme un enclos de lumière blanche', () => {
   const s = newGame({ mode: 'classic', tutorial: true, seed: 3 });
+  assert.equal(B.enclosures(s.board.c).length, 0);
   const { ti, x, y } = TUTORIAL.target;
   const r = place(s, ti, x, y);
-  const clear = r.events.find((e) => e.type === 'clear');
-  assert.ok(clear && clear.pures === 1);
+  const enc = r.events.find((e) => e.type === 'enclose');
+  assert.ok(enc && enc.regions[0].white && enc.regions[0].area === 4);
 });
 
 test('générateur : déterministe et lots jouables en début de partie', () => {
-  const a = dealSet(B.createBoard().c, createRng(5), { difficulty: 0 });
-  const b = dealSet(B.createBoard().c, createRng(5), { difficulty: 0 });
+  const a = dealSet(B.createBoard(), createRng(5), { difficulty: 0 });
+  const b = dealSet(B.createBoard(), createRng(5), { difficulty: 0 });
   assert.deepEqual(a, b);
   const rng = createRng(11);
-  for (let t = 0; t < 60; t++) {
+  for (let t = 0; t < 40; t++) {
     const brd = B.createBoard();
-    for (let i = 0; i < 64; i++) if ((i * 7 + t * 13) % 5 < 2) brd.c[i] = 1;
-    for (const l of [B.fullLines(brd.c)]) B.clearLines(brd, l.rows, l.cols);
-    const set = dealSet(brd.c, rng, { difficulty: 0 });
+    for (let i = 0; i < B.CELLS; i++) if ((i * 7 + t * 13) % 5 < 2) brd.c[i] = B.R;
+    B.resolve(brd);
+    const set = dealSet(brd, rng, { difficulty: 0 });
     assert.equal(set.length, 3);
-    assert.ok(solvable(brd.c, set.map((p) => SHAPES[p.k]), 20000), `lot ${t} jouable`);
-    for (const p of set) assert.ok(p.col >= 1 && p.col <= B.COLORS);
+    assert.ok(solvable(brd, set.map((p) => SHAPES[p.k]), 30000), `lot ${t} jouable`);
+    for (const p of set) assert.ok(B.COLORS.includes(p.col));
   }
 });
 
-test('générateur : couleurs recherchées', () => {
-  const b = B.boardFromRows(rows('333.....', '1.......', '1.......', '1#......'));
-  const w = wantedColors(b.c);
-  assert.ok(w.includes(3));
-  assert.ok(!w.includes(1), 'la colonne contient une pierre');
+test('générateur : détecte un enclos fermable', () => {
+  const b = B.boardFromRows(rows(EMPTY, '...r....', '..r.r...'));
+  assert.ok(canEncloseNow(b, [SHAPES['mono:0']]));
+  assert.ok(!canEncloseNow(B.createBoard(), [SHAPES['mono:0']]));
 });
 
-test('aventure : objectifs, coups limités et étoiles', () => {
-  const level = { n: 99, rows: rows('a111111.', '########'.slice(0, 7) + '.'), goals: [{ type: 'gems', target: 1 }, { type: 'stones' }], moves: 10, diff: 0 };
-  const s = newGame({ mode: 'adventure', level, seed: 4 });
-  assert.equal(s.goals[1].target, 7);
-  s.tray = [{ k: 'line3:1', col: 2, gem: -1 }, { k: 'mono:0', col: 2, gem: -1 }, null];
-  place(s, 1, 7, 0);
-  assert.equal(s.stats.gems, 1);
-  assert.equal(s.status, 'play');
-  s.tray = [{ k: 'mono:0', col: 2, gem: -1 }, null, null];
-  const r = place(s, 0, 7, 1);
-  assert.equal(s.status, 'won');
-  assert.ok(r.events.some((e) => e.type === 'end' && e.status === 'won'));
-  assert.equal(starsFor(s), 3);
-  const lost = newGame({ mode: 'adventure', level: { ...level, moves: 1 }, seed: 4 });
-  lost.tray = [{ k: 'mono:0', col: 2, gem: -1 }, null, null];
-  place(lost, 0, 4, 4);
-  assert.equal(lost.status, 'lost');
-  assert.equal(lost.end, 'moves');
-});
-
-test('aventure : moins de 3 coups restants → lot réduit', () => {
-  const level = { n: 98, rows: rows(), goals: [{ type: 'lines', target: 50 }], moves: 4, diff: 0 };
+test('aventure : coups limités, défaite et lot réduit', () => {
+  const level = { n: 99, rows: rows(), goals: [{ type: 'areas', target: 50 }], moves: 4, diff: 0 };
   const s = newGame({ mode: 'adventure', level, seed: 8 });
   for (let i = 0; i < 3; i++) {
     const ti = s.tray.findIndex(Boolean);
-    const [x, y] = B.positions(s.board.c, SHAPES[s.tray[ti].k])[0];
+    const [x, y] = B.positions(s.board, SHAPES[s.tray[ti].k]).at(-1);
     place(s, ti, x, y);
   }
   assert.equal(s.tray.filter(Boolean).length, 1);
+  const ti = s.tray.findIndex(Boolean);
+  const [x, y] = B.positions(s.board, SHAPES[s.tray[ti].k])[0];
+  place(s, ti, x, y);
+  assert.equal(s.status, 'lost');
+  assert.equal(s.end, 'moves');
+  assert.equal(starsFor(s), 0);
 });

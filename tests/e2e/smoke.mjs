@@ -59,22 +59,22 @@ try {
   check((await page.textContent('#btn-play')).includes('Jouer'), 'accueil en français');
   await page.screenshot({ path: path.join(shots, 'accueil.png') });
 
-  // Initiation : la première pièce se glisse dans le trou et réussit une ligne prisme.
+  // Initiation : la première pièce ferme un enclos de lumière blanche.
   await page.click('#btn-play');
   await page.waitForTimeout(400);
   check(await page.evaluate(() => !!window.__prisme.view.hand), 'la main de l\'initiation est affichée');
   const tuto = await page.evaluate(() => {
-    const v = window.__prisme.view, tp = v.trayPiece(0), [x, y] = v.cellXY(6, 7);
+    const v = window.__prisme.view, tp = v.trayPiece(0), [x, y] = v.cellXY(3, 5);
     return { from: [tp.x + tp.cell, tp.y + tp.cell / 2], to: [x + v.board.cell, y + v.board.cell / 2] };
   });
   await page.mouse.move(...tuto.from);
   await page.mouse.down();
   await page.mouse.move(tuto.to[0], tuto.to[1], { steps: 10 });
   const ghost = await page.evaluate(() => window.__prisme.view.drag && window.__prisme.view.drag.ghost);
-  check(ghost && ghost.x === 6 && ghost.y === 7 && ghost.lines.rows.length === 1, 'l\'aperçu montre la ligne qui va disparaître');
+  check(ghost && ghost.x === 3 && ghost.y === 5 && ghost.regions.length === 1 && ghost.points > 0, 'l\'aperçu montre la zone qui va s\'illuminer et les points');
   await page.mouse.up();
   let st = await state(page);
-  check(st.moves === 1 && st.score > 700, `pose à la souris + ligne prisme + grille nette (${st.score} pts)`);
+  check(st.moves === 1 && st.score > 900, `pose à la souris + enclos de lumière blanche + grille nette (${st.score} pts)`);
   check(await page.evaluate(() => window.__prisme.profile.tutorialDone), 'initiation marquée comme faite');
 
   // Clavier : 1 choisit la pièce, les flèches la déplacent, Entrée la pose.
@@ -106,8 +106,9 @@ try {
   // Impasse et pouvoir « bombe » à la souris.
   await page.evaluate(() => {
     const g = window.__prisme.game, s = g.s;
-    const rows = ['1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1', '1.1.1.1.', '.1.1.1.1'];
-    rows.forEach((r, y) => [...r].forEach((ch, x) => { s.board.c[y * 8 + x] = ch === '.' ? 0 : 1; s.board.g[y * 8 + x] = 0; }));
+    // Grille pleine sauf quelques cases isolées sur le bord : rien ne rentre, aucun enclos.
+    for (let y = 0; y < 9; y++) for (let x = 0; x < 8; x++) { s.board.c[y * 8 + x] = x === 0 && y % 2 === 0 ? 0 : 1; s.board.o[y * 8 + x] = 0; }
+    s.star = null;
     s.tray = [{ k: 'square2:0', col: 2, gem: -1 }, { k: 'square3:0', col: 3, gem: -1 }, { k: 'line5:0', col: 4, gem: -1 }];
     s.status = 'stuck';
     s.powers = { rotate: 0, bomb: 1, reroll: 0 };
@@ -144,7 +145,7 @@ try {
   check(await page.isDisabled('[data-level="2"]'), 'niveau 2 verrouillé au départ');
   await page.click('[data-level="1"]');
   await page.waitForSelector('.intro');
-  check((await page.textContent('.intro')).includes('Compléter 2 lignes'), 'objectifs du niveau affichés');
+  check((await page.textContent('.intro')).includes('Fermer 1 enclos'), 'objectifs du niveau affichés');
   await page.click('.intro .btn.primary');
   await page.waitForTimeout(300);
   st = await state(page);
@@ -201,7 +202,7 @@ try {
   const lay = await mob.evaluate(() => {
     const v = window.__prisme.view, b = v.board;
     const powers = document.querySelector('#powers').getBoundingClientRect();
-    return { inside: b.x >= 0 && b.x + b.size <= innerWidth && b.y >= 0, powersInside: powers.bottom <= innerHeight, size: b.size, scroll: document.documentElement.scrollWidth <= innerWidth };
+    return { inside: b.x >= 0 && b.x + b.w <= innerWidth && b.y >= 0 && b.y + b.h <= innerHeight, powersInside: powers.bottom <= innerHeight, size: b.w, scroll: document.documentElement.scrollWidth <= innerWidth };
   });
   check(lay.inside && lay.powersInside && lay.scroll, `mise en page mobile (grille de ${Math.round(lay.size)} px, rien ne déborde)`);
   const cdp = await mctx.newCDPSession(mob);
@@ -231,7 +232,7 @@ try {
   const ll = await land.evaluate(() => {
     const v = window.__prisme.view, b = v.board, last = v.slots[2];
     const p = document.querySelector('#powers').getBoundingClientRect();
-    return document.querySelector('#screen-game').classList.contains('landscape') && b.y >= 0 && b.y + b.size <= innerHeight && last.y + last.h <= innerHeight + 1 && last.x + last.w <= innerWidth && p.bottom <= innerHeight;
+    return document.querySelector('#screen-game').classList.contains('landscape') && b.y >= 0 && b.y + b.h <= innerHeight + 1 && last.y + last.h <= innerHeight + 1 && last.x + last.w <= innerWidth && p.bottom <= innerHeight;
   });
   check(ll, 'disposition paysage : grille, pièces et pouvoirs visibles');
   await land.screenshot({ path: path.join(shots, 'paysage.png') });
